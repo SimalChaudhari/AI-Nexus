@@ -541,10 +541,10 @@ function QuickLinks({ active = 'dashboard' }) {
 export function IntlProfileView() {
   const router = useRouter();
   const { user: authUser, ready: authReady, signOut } = useIntlAuth();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => authUser || getIntlUser());
   const [payment, setPayment] = useState(null);
   const [payments, setPayments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !authUser && !getIntlUser());
   const [paymentLoading, setPaymentLoading] = useState(true);
 
   useLayoutEffect(() => {
@@ -604,15 +604,28 @@ export function IntlProfileView() {
     return (
       <Box
         sx={{
-          minHeight: '50vh',
+          width: '100%',
+          minHeight: 'calc(100dvh - 64px)',
           display: 'grid',
           placeItems: 'center',
           bgcolor: PAGE_BG,
           px: 2,
         }}
       >
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.25 }}>
-          <CircularProgress size={28} sx={{ color: NAVY }} />
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+          <Box
+            sx={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              bgcolor: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              boxShadow: '0 8px 24px rgba(0, 32, 96, 0.12)',
+            }}
+          >
+            <CircularProgress size={26} thickness={4} sx={{ color: NAVY }} />
+          </Box>
           <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: alpha(NAVY, 0.7) }}>
             Loading profile…
           </Typography>
@@ -621,7 +634,21 @@ export function IntlProfileView() {
     );
   }
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <Box
+        sx={{
+          width: '100%',
+          minHeight: 'calc(100dvh - 64px)',
+          display: 'grid',
+          placeItems: 'center',
+          bgcolor: PAGE_BG,
+        }}
+      >
+        <CircularProgress size={26} thickness={4} sx={{ color: NAVY }} />
+      </Box>
+    );
+  }
 
   const historyItems = payments.length ? payments : payment ? [payment] : [];
 

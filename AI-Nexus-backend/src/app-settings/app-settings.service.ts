@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 
 import {
   AppSettingsEntity,
+  CertificateTemplateSettings,
   MembershipPaymentSettings,
   WelcomeEmailContent,
   WorkflowTemplatesPitchContent,
@@ -351,6 +352,21 @@ const CEO_LAUNCH_STAT_LABEL_MAX = 120;
 const CEO_LAUNCH_STAT_ICON_MAX = 500;
 const EMPLOYER_BENEFITS_MAX = 6;
 const EMPLOYER_LOGOS_MAX = 50;
+const CERTIFICATE_TEMPLATE_LOGOS_MAX = 3;
+
+export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS: CertificateTemplateSettings = {
+  titleLine1: 'CERTIFICATE',
+  titleLine2Left: 'OF',
+  titleLine2Right: 'ATTENDANCE',
+  awardedToLabel: 'has been awarded to',
+  sessionLabel: 'for attending of the session',
+  cpeSectionLabel: 'Total CPE Hours and Pillar:',
+  signatoryName: 'Sign off: Fann Kor',
+  signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
+  issuerName: 'ISCA ACADEMY PTE LTD',
+  logoUrls: ['', '', ''],
+  signatureUrl: null,
+};
 const EMPLOYEE_BENEFITS_MAX = 6;
 const EMPLOYEE_LOGOS_MAX = 100;
 const EMPLOYEE_STATS_MAX = 6;
@@ -548,6 +564,7 @@ export class AppSettingsService {
   private learningAdvertiseTabColumnChecked = false;
   private internationalLandingColumnChecked = false;
   private membershipPaymentSettingsColumnChecked = false;
+  private certificateTemplateSettingsColumnChecked = false;
 
   constructor(
     @InjectRepository(AppSettingsEntity)
@@ -718,6 +735,194 @@ export class AppSettingsService {
       'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "internationalLandingContent" jsonb'
     );
     this.internationalLandingColumnChecked = true;
+  }
+
+  private async ensureCertificateTemplateSettingsColumn(): Promise<void> {
+    if (this.certificateTemplateSettingsColumnChecked) return;
+    await this.appSettingsRepository.query(
+      'ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS "certificateTemplateSettings" jsonb',
+    );
+    this.certificateTemplateSettingsColumnChecked = true;
+  }
+
+  private sanitizeCertificateTemplateSettings(
+    input: unknown,
+    existing?: CertificateTemplateSettings | null,
+  ): CertificateTemplateSettings {
+    const source = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+    const prev = existing || {};
+    const prevLogos = Array.isArray(prev.logoUrls) ? [...prev.logoUrls] : [];
+    const logoUrls: string[] = [];
+    for (let i = 0; i < CERTIFICATE_TEMPLATE_LOGOS_MAX; i += 1) {
+      const raw =
+        Array.isArray(source.logoUrls) && source.logoUrls[i] != null
+          ? source.logoUrls[i]
+          : prevLogos[i];
+      logoUrls.push(this.toStoredUploadPath(raw) || this.cleanText(raw, 500));
+    }
+    const signatureRaw =
+      source.signatureUrl !== undefined ? source.signatureUrl : prev.signatureUrl;
+    return {
+      titleLine1:
+        this.cleanText(source.titleLine1 ?? prev.titleLine1, 80) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine1,
+      titleLine2Left:
+        this.cleanText(source.titleLine2Left ?? prev.titleLine2Left, 40) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Left,
+      titleLine2Right:
+        this.cleanText(source.titleLine2Right ?? prev.titleLine2Right, 80) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right,
+      awardedToLabel:
+        this.cleanText(source.awardedToLabel ?? prev.awardedToLabel, 120) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.awardedToLabel,
+      sessionLabel:
+        this.cleanText(source.sessionLabel ?? prev.sessionLabel, 120) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.sessionLabel,
+      cpeSectionLabel:
+        this.cleanText(source.cpeSectionLabel ?? prev.cpeSectionLabel, 120) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.cpeSectionLabel,
+      signatoryName:
+        this.cleanText(source.signatoryName ?? prev.signatoryName, 120) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryName,
+      signatoryTitle:
+        this.cleanText(source.signatoryTitle ?? prev.signatoryTitle, 120) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryTitle,
+      issuerName:
+        this.cleanText(source.issuerName ?? prev.issuerName, 120) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.issuerName,
+      logoUrls,
+      signatureUrl:
+        signatureRaw == null || signatureRaw === ''
+          ? null
+          : this.toStoredUploadPath(signatureRaw) || this.cleanText(signatureRaw, 500) || null,
+    };
+  }
+
+  async getCertificateTemplateSettings(): Promise<CertificateTemplateSettings> {
+    await this.ensureCertificateTemplateSettingsColumn();
+    const settings = await this.getSettings();
+    return this.sanitizeCertificateTemplateSettings(
+      settings.certificateTemplateSettings || {},
+      settings.certificateTemplateSettings,
+    );
+  }
+
+  async getCertificateTemplateForPdf(): Promise<CertificateTemplateSettings> {
+    return this.getCertificateTemplateSettings();
+  }
+
+  async updateCertificateTemplateSettings(payload: unknown): Promise<{
+    message: string;
+    settings: AppSettingsEntity;
+    certificateTemplateSettings: CertificateTemplateSettings;
+  }> {
+    await this.ensureCertificateTemplateSettingsColumn();
+    const settings = await this.getSettings();
+    const sanitized = this.sanitizeCertificateTemplateSettings(
+      payload,
+      settings.certificateTemplateSettings,
+    );
+    settings.certificateTemplateSettings = sanitized;
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Certificate template settings updated successfully',
+      settings: saved,
+      certificateTemplateSettings: sanitized,
+    };
+  }
+
+  async uploadCertificateTemplateLogo(
+    index: number,
+    file: Express.Multer.File,
+  ): Promise<{ message: string; settings: AppSettingsEntity; certificateTemplateSettings: CertificateTemplateSettings }> {
+    await this.ensureCertificateTemplateSettingsColumn();
+    const settings = await this.getSettings();
+    const slot = Math.max(0, Math.min(Math.floor(index), CERTIFICATE_TEMPLATE_LOGOS_MAX - 1));
+    const folder = `certificate-template/logos/${slot}`;
+    await this.localStorageService.clearFolder(folder);
+    const relativeUrl = await this.localStorageService.saveFile(file, folder, {
+      fileName: 'logo',
+    });
+    const existing = this.sanitizeCertificateTemplateSettings(
+      settings.certificateTemplateSettings || {},
+      settings.certificateTemplateSettings,
+    );
+    const logoUrls = [...(existing.logoUrls || ['', '', ''])];
+    while (logoUrls.length < CERTIFICATE_TEMPLATE_LOGOS_MAX) logoUrls.push('');
+    logoUrls[slot] = relativeUrl;
+    settings.certificateTemplateSettings = { ...existing, logoUrls };
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Certificate logo uploaded successfully',
+      settings: saved,
+      certificateTemplateSettings: settings.certificateTemplateSettings,
+    };
+  }
+
+  async removeCertificateTemplateLogo(
+    index: number,
+  ): Promise<{ message: string; settings: AppSettingsEntity; certificateTemplateSettings: CertificateTemplateSettings }> {
+    await this.ensureCertificateTemplateSettingsColumn();
+    const settings = await this.getSettings();
+    const slot = Math.max(0, Math.min(Math.floor(index), CERTIFICATE_TEMPLATE_LOGOS_MAX - 1));
+    await this.localStorageService.clearFolder(`certificate-template/logos/${slot}`);
+    const existing = this.sanitizeCertificateTemplateSettings(
+      settings.certificateTemplateSettings || {},
+      settings.certificateTemplateSettings,
+    );
+    const logoUrls = [...(existing.logoUrls || ['', '', ''])];
+    while (logoUrls.length < CERTIFICATE_TEMPLATE_LOGOS_MAX) logoUrls.push('');
+    logoUrls[slot] = '';
+    settings.certificateTemplateSettings = { ...existing, logoUrls };
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Certificate logo removed successfully',
+      settings: saved,
+      certificateTemplateSettings: settings.certificateTemplateSettings,
+    };
+  }
+
+  async uploadCertificateTemplateSignature(
+    file: Express.Multer.File,
+  ): Promise<{ message: string; settings: AppSettingsEntity; certificateTemplateSettings: CertificateTemplateSettings }> {
+    await this.ensureCertificateTemplateSettingsColumn();
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('certificate-template/signature');
+    const relativeUrl = await this.localStorageService.saveFile(file, 'certificate-template/signature', {
+      fileName: 'signature',
+    });
+    const existing = this.sanitizeCertificateTemplateSettings(
+      settings.certificateTemplateSettings || {},
+      settings.certificateTemplateSettings,
+    );
+    settings.certificateTemplateSettings = { ...existing, signatureUrl: relativeUrl };
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Certificate signature uploaded successfully',
+      settings: saved,
+      certificateTemplateSettings: settings.certificateTemplateSettings,
+    };
+  }
+
+  async removeCertificateTemplateSignature(): Promise<{
+    message: string;
+    settings: AppSettingsEntity;
+    certificateTemplateSettings: CertificateTemplateSettings;
+  }> {
+    await this.ensureCertificateTemplateSettingsColumn();
+    const settings = await this.getSettings();
+    await this.localStorageService.clearFolder('certificate-template/signature');
+    const existing = this.sanitizeCertificateTemplateSettings(
+      settings.certificateTemplateSettings || {},
+      settings.certificateTemplateSettings,
+    );
+    settings.certificateTemplateSettings = { ...existing, signatureUrl: null };
+    const saved = await this.appSettingsRepository.save(settings);
+    return {
+      message: 'Certificate signature removed successfully',
+      settings: saved,
+      certificateTemplateSettings: settings.certificateTemplateSettings,
+    };
   }
 
   private async ensureMembershipPaymentSettingsColumn(): Promise<void> {

@@ -10,11 +10,20 @@ import Typography from '@mui/material/Typography';
 
 import { Iconify } from 'src/components/iconify';
 import { paths } from 'src/routes/paths';
+import { useIntlAuth } from 'src/auth/intl-auth-context';
 import { isIntlAuthenticated } from 'src/auth/intl-session';
-import { resolveAssetUrl } from 'src/utils/asset-url';
 import { navigateToAuthPath } from 'src/utils/intl-auth-navigate';
-import { getYouTubeVideoId } from 'src/utils/youtube';
-import { buildSpotlightrEmbedUrl, parseSpotlightrUrl } from 'src/utils/spotlightr';
+import { flushActiveIntlModuleProgress } from 'src/utils/intl-module-progress-save';
+import { intlPathwayProgressService } from 'src/services/intl-pathway-progress.service';
+import { IntlModuleLessonPlayer } from './intl-module-lesson-player';
+import { PathwayCertificateBar } from './pathway-certificate-bar';
+import { useIntlPathwayProgress, IntlPathwayProgressProvider } from './use-intl-pathway-progress';
+import {
+  coverageMeasureSeconds,
+  coveragePercentDisplay,
+  formatSecondsToClock,
+  parseCoverageRangePairs,
+} from 'src/utils/video-coverage';
 
 import { getStoredIntlRegion } from '../intl-region';
 import { MODULES } from './pathway-modules';
@@ -65,6 +74,86 @@ const tokens = {
 const FSET = new Set(FOUNDATION);
 const MODULES_BY_CODE = Object.fromEntries(MODULES.map((m) => [m.code, m]));
 
+function readOpenModuleFromUrl() {
+  if (typeof window === 'undefined') return { code: '', moduleId: '' };
+  const params = new URLSearchParams(window.location.search);
+  return {
+    code: String(params.get('module') || '').trim(),
+    moduleId: String(params.get('moduleId') || params.get('section') || '').trim(),
+  };
+}
+
+function resolveCodeFromOpenUrl(modulesLookup) {
+  const { code, moduleId } = readOpenModuleFromUrl();
+  if (code) return code;
+  if (!moduleId || !modulesLookup) return '';
+  const match = Object.values(modulesLookup).find(
+    (row) => String(row?.id || '').trim() === moduleId,
+  );
+  return String(match?.code || '').trim();
+}
+
+/** Keep dashboard view + open module in the address bar (shareable / refresh-safe). */
+function syncOpenModuleInUrl({ code = '', moduleId = '', sectionId = '', view } = {}) {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  if (view) url.searchParams.set('view', view);
+  const openCode = String(code || '').trim();
+  const openModuleId = String(moduleId || '').trim();
+  const openSectionId = String(sectionId || '').trim();
+  if (openCode) {
+    url.searchParams.set('module', openCode);
+    if (openModuleId) url.searchParams.set('moduleId', openModuleId);
+    else url.searchParams.delete('moduleId');
+    if (openSectionId) url.searchParams.set('section', openSectionId);
+    else url.searchParams.delete('section');
+  } else {
+    url.searchParams.delete('module');
+    url.searchParams.delete('moduleId');
+    url.searchParams.delete('section');
+  }
+  window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+}
+
+function readOpenVideoCodes() {
+  if (typeof window === 'undefined') return new Set();
+  const fromUrl = readOpenModuleFromUrl().code;
+  return fromUrl ? new Set([fromUrl]) : new Set();
+}
+
+function writeOpenVideoCodes(_scope, _codes) {
+  // Open module is tracked in the URL only — no browser storage.
+}
+
+function toggleOneOpenCode(prev, code) {
+  if (prev.has(code)) return new Set();
+  return new Set([code]);
+}
+
+function useScrollOpenVideoIntoView(openCodes) {
+  useEffect(() => {
+    const code = [...(openCodes || [])][0];
+    if (!code || typeof document === 'undefined') return undefined;
+    const timer = window.setTimeout(() => {
+      const el = document.querySelector(`[data-pathway-module="${code}"]`);
+      if (!el || !el.getClientRects().length) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [openCodes]);
+}
+
+function useCanPlayIntlVideo() {
+  const { user } = useIntlAuth();
+  const [canPlay, setCanPlay] = useState(false);
+
+  useEffect(() => {
+    setCanPlay(Boolean(user) || isIntlAuthenticated());
+  }, [user]);
+
+  return canPlay;
+}
+
 const CheckIcon = (
   <Box
     component="svg"
@@ -88,9 +177,14 @@ const LockIcon = (
 
 // ----------------------------------------------------------------------
 
-export function PathwayPlannerView({ embedded = false }) {
+function PathwayPlannerViewInner({ embedded = false }) {
   const [region, setRegion] = useState(null);
+  const canPlayVideo = useCanPlayIntlVideo();
+  const { progressByCode, upsertLocal } = useIntlPathwayProgress();
   const { videoUrlsByCode, minutesByCode, modulesByCode, roles: apiRoles } = usePathwayModuleVideos();
+  const returnTo = embedded ? `${paths.dashboard}?view=roles` : paths.internationalAiFluencyRoles;
+  const signupHref = `${paths.auth.signUp}?returnTo=${encodeURIComponent(returnTo)}`;
+  const signInHref = `${paths.auth.signIn}?returnTo=${encodeURIComponent(returnTo)}`;
   const roles = apiRoles?.length
     ? apiRoles.map((r) => ({
         name: r.name,
@@ -112,6 +206,10 @@ export function PathwayPlannerView({ embedded = false }) {
       base[code] = {
         ...(base[code] || {}),
         code,
+        id: row.id || base[code]?.id || '',
+        courseId: row.courseId || base[code]?.courseId || '',
+        moduleId: row.moduleId || base[code]?.moduleId || '',
+        sectionId: row.sectionId || base[code]?.sectionId || '',
         title: row.title || base[code]?.title || code,
         pillar: row.pillar || base[code]?.pillar || '01',
         minutes: Number(row.minutes) > 0 ? Number(row.minutes) : base[code]?.minutes || 0,
@@ -121,20 +219,53 @@ export function PathwayPlannerView({ embedded = false }) {
     return base;
   }, [modulesByCode]);
 
+  const catalogCodes = useMemo(
+    () =>
+      Object.keys(modulesLookup || {})
+        .map((code) => String(code || '').trim())
+        .filter(Boolean)
+        .sort(),
+    [modulesLookup],
+  );
+
   const [roleIdx, setRoleIdx] = useState(0);
   const [selected, setSelected] = useState(() => autoSelect(roles[0] || ROLES[0], MODULES_BY_CODE, FSET));
   const [lockedSet, setLockedSet] = useState(() => new Set(roleFoundation(roles[0] || ROLES[0])));
-  const [openCodes, setOpenCodes] = useState(() => new Set());
+  const urlView = embedded ? 'roles' : undefined;
+  const [openCodes, setOpenCodes] = useState(() => readOpenVideoCodes('role'));
 
   useEffect(() => {
     if (!roles.length) return;
     const role = roles[Math.min(roleIdx, roles.length - 1)] || roles[0];
     setLockedSet(new Set(roleFoundation(role)));
     setSelected(autoSelect(role, modulesLookup, FSET, minutesByCode));
-    setOpenCodes(new Set());
-    // Re-sync when catalog arrives from API
+    // Keep the open video after refresh; only switching role / reset closes it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiRoles, modulesByCode, minutesByCode]);
+
+  useEffect(() => {
+    const resolved = resolveCodeFromOpenUrl(modulesLookup);
+    if (!resolved) return;
+    setOpenCodes((prev) => {
+      if (prev.has(resolved)) return prev;
+      const next = new Set([resolved]);
+      writeOpenVideoCodes('role', next);
+      return next;
+    });
+  }, [modulesLookup]);
+
+  // URL sync must run in an effect — replaceState inside setState updaters
+  // updates Next.js Router during render (PathwayBrowseList / Router warning).
+  useEffect(() => {
+    const nextOpen = [...openCodes][0] || '';
+    const meta = nextOpen ? modulesLookup?.[nextOpen] : null;
+    syncOpenModuleInUrl({
+      code: nextOpen,
+      moduleId: nextOpen ? String(meta?.moduleId || '') : '',
+      sectionId: nextOpen ? String(meta?.sectionId || '') : '',
+      view: urlView,
+    });
+  }, [openCodes, modulesLookup, urlView]);
 
   const totalMinutes = useMemo(
     () => sumSelectedMinutes(selected, minutesByCode, modulesLookup),
@@ -162,6 +293,7 @@ export function PathwayPlannerView({ embedded = false }) {
     setLockedSet(new Set(roleFoundation(role)));
     setSelected(autoSelect(role, modulesLookup, FSET, minutesByCode));
     setOpenCodes(new Set());
+    writeOpenVideoCodes('role', []);
   };
 
   const toggleModule = (code) => {
@@ -175,19 +307,37 @@ export function PathwayPlannerView({ embedded = false }) {
   };
 
   const toggleOpen = (code) => {
-    setOpenCodes((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
+    if (!code) return;
+    void (async () => {
+      // Save previous lesson first, then open immediately — never wait on GET
+      // (waiting delayed Spotlightr bind so progress only worked after full refresh).
+      await flushActiveIntlModuleProgress();
+      setOpenCodes((prev) => {
+        const next = toggleOneOpenCode(prev, code);
+        writeOpenVideoCodes('role', next);
+        return next;
+      });
+      // Prefetch in background; player also GETs on mount.
+      try {
+        const remote = await intlPathwayProgressService.getModuleProgress(code);
+        if (remote && typeof remote === 'object') {
+          const remoteCode = String(remote.pathwayCode || remote.code || '').trim();
+          if (!remoteCode || remoteCode === code) upsertLocal(code, remote);
+        }
+      } catch {
+        // ignore
+      }
+    })();
   };
 
   const resetPath = () => {
     if (roleIdx === null || !roles[roleIdx]) return;
     setSelected(autoSelect(roles[roleIdx], modulesLookup, FSET, minutesByCode));
     setOpenCodes(new Set());
+    writeOpenVideoCodes('role', []);
   };
+
+  useScrollOpenVideoIntoView(openCodes);
 
   const plannerBody = (
     <>
@@ -370,17 +520,25 @@ export function PathwayPlannerView({ embedded = false }) {
                 </Typography>
               </Box>
             ) : (
-              <RolePlan
-                role={roles[roleIdx]}
-                selected={selected}
-                lockedSet={lockedSet}
-                openCodes={openCodes}
-                videoUrlsByCode={videoUrlsByCode}
-                minutesByCode={minutesByCode}
-                modulesLookup={modulesLookup}
-                onToggle={toggleModule}
-                onToggleOpen={toggleOpen}
-              />
+              <>
+                {canPlayVideo ? <PathwayCertificateBar moduleCodes={catalogCodes} /> : null}
+                <RolePlan
+                  role={roles[roleIdx]}
+                  selected={selected}
+                  lockedSet={lockedSet}
+                  openCodes={openCodes}
+                  videoUrlsByCode={videoUrlsByCode}
+                  minutesByCode={minutesByCode}
+                  modulesLookup={modulesLookup}
+                  canPlayVideo={canPlayVideo}
+                  progressByCode={progressByCode}
+                  onProgress={upsertLocal}
+                  signupHref={signupHref}
+                  signInHref={signInHref}
+                  onToggle={toggleModule}
+                  onToggleOpen={toggleOpen}
+                />
+              </>
             )}
           </Box>
         </Box>
@@ -439,6 +597,18 @@ export function PathwayPlannerView({ embedded = false }) {
         {plannerBody}
       </DashboardContent>
     </Box>
+  );
+}
+
+export function PathwayPlannerView({ embedded = false }) {
+  // Hook must run inside the provider — otherwise live % only appeared after full refresh.
+  if (embedded) {
+    return <PathwayPlannerViewInner embedded />;
+  }
+  return (
+    <IntlPathwayProgressProvider>
+      <PathwayPlannerViewInner embedded={false} />
+    </IntlPathwayProgressProvider>
   );
 }
 
@@ -643,6 +813,11 @@ function RolePlan({
   videoUrlsByCode,
   minutesByCode,
   modulesLookup,
+  canPlayVideo = false,
+  progressByCode,
+  onProgress,
+  signupHref = paths.auth.signUp,
+  signInHref = paths.auth.signIn,
   onToggle,
   onToggleOpen,
 }) {
@@ -710,6 +885,11 @@ function RolePlan({
             videoUrl={videoUrlsByCode?.[code] || ''}
             minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
             moduleMeta={modulesLookup?.[code]}
+            progress={progressByCode?.[code] || null}
+            onProgress={onProgress}
+            canPlayVideo={canPlayVideo}
+            signupHref={signupHref}
+            signInHref={signInHref}
             onToggle={onToggle}
             onToggleOpen={onToggleOpen}
           />
@@ -736,6 +916,11 @@ function RolePlan({
                 videoUrl={videoUrlsByCode?.[code] || ''}
                 minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
                 moduleMeta={modulesLookup?.[code]}
+                progress={progressByCode?.[code] || null}
+                onProgress={onProgress}
+                canPlayVideo={canPlayVideo}
+                signupHref={signupHref}
+                signInHref={signInHref}
                 onToggle={onToggle}
                 onToggleOpen={onToggleOpen}
               />
@@ -800,11 +985,23 @@ function ModuleCard({
   onToggle,
   onToggleOpen,
   browse = false,
-  requireAuth = false,
-  canPlayVideo = true,
+  canPlayVideo = false,
+  showLockIcon = false,
+  progress = null,
+  onProgress,
   signupHref = paths.auth.signUp,
   signInHref = paths.auth.signIn,
 }) {
+  const [liveProgress, setLiveProgress] = useState(null);
+  useEffect(() => {
+    setLiveProgress(null);
+  }, [code]);
+
+  const handleProgress = (progressCode, row) => {
+    if (progressCode === code && row) setLiveProgress(row);
+    onProgress?.(progressCode, row);
+  };
+
   const m = moduleMeta || MODULES_BY_CODE[code] || { code, title: code, pillar: '01', minutes: 0 };
   const minutes = Number(minutesProp) > 0 ? Number(minutesProp) : Number(m.minutes) || 0;
   const pillarColors = {
@@ -813,7 +1010,32 @@ function ModuleCard({
     3: { color: '#15803d', bg: '#e4f3ea', border: '#c3e5cf' },
   };
   const pillar = pillarColors[+m.pillar] || pillarColors[1];
-  const showAuthGate = browse && requireAuth && !canPlayVideo;
+  const showAuthGate = !canPlayVideo;
+  const progressRow = liveProgress || progress;
+  const durationSec =
+    Number(progressRow?.durationSeconds || progressRow?.videoDurationSeconds) ||
+    (minutes > 0 ? minutes * 60 : 0);
+  const rangeWatched = Array.isArray(progressRow?.watchedCoverageRanges)
+    ? coverageMeasureSeconds(parseCoverageRangePairs(progressRow.watchedCoverageRanges), durationSec)
+    : 0;
+  const watchedSec = Math.max(rangeWatched, Number(progressRow?.watchedSeconds) || 0);
+  const watchedPct = coveragePercentDisplay(watchedSec, durationSec, {
+    isComplete: Boolean(progressRow?.isCompleted),
+  });
+  const playheadSec = Math.max(0, Number(progressRow?.lastPositionSeconds) || 0);
+  // Fort sidebar style: playhead / duration • unique% (✓ when complete)
+  const hasWatchProgress =
+    Boolean(progressRow?.isCompleted) || watchedSec > 0 || watchedPct > 0 || playheadSec > 2;
+  const watchProgressLabel = (() => {
+    if (!hasWatchProgress) return null;
+    if (!(durationSec > 0)) {
+      return progressRow?.isCompleted ? 'Complete' : `${watchedPct}%`;
+    }
+    const left = formatSecondsToClock(playheadSec > 0 ? playheadSec : watchedSec);
+    const total = formatSecondsToClock(durationSec);
+    const doneMark = progressRow?.isCompleted ? ' ✓' : '';
+    return `${left} / ${total} • ${Math.round(Number(watchedPct) || 0)}%${doneMark}`;
+  })();
 
   const handleRowClick = () => {
     if (browse) {
@@ -825,6 +1047,7 @@ function ModuleCard({
 
   return (
     <Box
+      data-pathway-module={code}
       sx={{
         bgcolor: !browse && locked ? '#eef3f9' : tokens.card,
         border: `1px solid ${!browse && selected ? tokens.pine : tokens.line}`,
@@ -845,7 +1068,22 @@ function ModuleCard({
           cursor: browse ? 'pointer' : locked ? 'default' : 'pointer',
         }}
       >
-        {!browse ? (
+        {browse && showLockIcon ? (
+          <Box
+            sx={{
+              width: 22,
+              height: 22,
+              borderRadius: '6px',
+              flex: 'none',
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: tokens.ink,
+              border: `1.5px solid ${tokens.ink}`,
+            }}
+          >
+            {LockIcon}
+          </Box>
+        ) : !browse ? (
           <Box
             sx={{
               width: 22,
@@ -932,6 +1170,19 @@ function ModuleCard({
           }}
         >
           {fmtMinutes(minutes)}
+          {canPlayVideo && watchProgressLabel ? (
+            <Box
+              component="span"
+              sx={{
+                display: 'block',
+                fontSize: 11,
+                color: progressRow?.isCompleted ? tokens.green : tokens.pine,
+                fontWeight: 700,
+              }}
+            >
+              {watchProgressLabel}
+            </Box>
+          ) : null}
         </Box>
 
         <Box
@@ -974,9 +1225,9 @@ function ModuleCard({
 
       <Box
         sx={{
-          maxHeight: open ? 2000 : 0,
-          overflow: 'hidden',
-          transition: 'max-height .3s ease',
+          maxHeight: open ? 'none' : 0,
+          overflow: open ? 'visible' : 'hidden',
+          transition: open ? 'none' : 'max-height .3s ease',
           borderTop: open ? `1px solid ${tokens.line}` : '1px solid transparent',
         }}
       >
@@ -985,7 +1236,18 @@ function ModuleCard({
             (showAuthGate ? (
               <VideoSignupGate signupHref={signupHref} signInHref={signInHref} />
             ) : (
-              <ModuleVideoPanel title={m.title} videoUrl={videoUrl} />
+              <IntlModuleLessonPlayer
+                key={code}
+                code={code}
+                title={m.title}
+                videoUrl={videoUrl}
+                requiredSecondsHint={minutes > 0 ? minutes * 60 : 0}
+                progress={progressRow}
+                onProgress={handleProgress}
+                courseId={m.courseId || ''}
+                moduleId={m.moduleId || ''}
+                sectionId={m.sectionId || ''}
+              />
             ))}
         </Box>
       </Box>
@@ -1016,18 +1278,18 @@ function VideoSignupGate({ signupHref, signInHref }) {
     >
       <Iconify icon="solar:lock-keyhole-bold-duotone" width={36} sx={{ color: tokens.pine }} />
       <Typography sx={{ fontWeight: 700, fontSize: 16, color: tokens.ink, maxWidth: 360 }}>
-        Sign up to watch this video
+        Sign in to watch this video
       </Typography>
       <Typography sx={{ fontSize: 13.5, color: tokens.inkSoft, maxWidth: 380, lineHeight: 1.5 }}>
-        Create a free account to unlock module videos in Student and Users sections.
+        Module videos are available only after you log in. Create a free account if you do not have one yet.
       </Typography>
       <Button
         component="a"
-        href={signupHref}
+        href={signInHref}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          navigateToAuthPath(router, signupHref);
+          navigateToAuthPath(router, signInHref);
         }}
         variant="contained"
         sx={{
@@ -1043,21 +1305,21 @@ function VideoSignupGate({ signupHref, signInHref }) {
           '&:hover': { bgcolor: '#a00000', boxShadow: 'none' },
         }}
       >
-        Sign up
+        Sign in
       </Button>
       <Typography sx={{ fontSize: 13, color: tokens.inkSoft }}>
-        Already have an account?{' '}
+        New here?{' '}
         <Box
           component="a"
-          href={signInHref}
+          href={signupHref}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            navigateToAuthPath(router, signInHref);
+            navigateToAuthPath(router, signupHref);
           }}
           sx={{ color: tokens.pine, fontWeight: 700, textDecoration: 'none', cursor: 'pointer' }}
         >
-          Sign in
+          Sign up
         </Box>
       </Typography>
     </Box>
@@ -1075,24 +1337,62 @@ export function PathwayBrowseList({
   videoUrlsByCode,
   minutesByCode,
   modulesLookup,
-  requireAuth = false,
   returnTo = paths.dashboard,
+  showLockIcon = false,
+  persistKey = 'browse',
+  urlView,
 }) {
-  const [openCodes, setOpenCodes] = useState(() => new Set());
-  const [canPlayVideo, setCanPlayVideo] = useState(false);
+  const [openCodes, setOpenCodes] = useState(() => readOpenVideoCodes(persistKey));
+  const canPlayVideo = useCanPlayIntlVideo();
+  const { progressByCode, upsertLocal } = useIntlPathwayProgress();
 
   useEffect(() => {
-    setCanPlayVideo(isIntlAuthenticated());
-  }, []);
-
-  const toggleOpen = (code) => {
+    const resolved = resolveCodeFromOpenUrl(modulesLookup);
+    if (!resolved) return;
     setOpenCodes((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
+      if (prev.has(resolved)) return prev;
+      const next = new Set([resolved]);
+      writeOpenVideoCodes(persistKey, next);
       return next;
     });
+  }, [modulesLookup, persistKey]);
+
+  // URL sync must run in an effect — replaceState inside setState updaters
+  // updates Next.js Router during render (PathwayBrowseList / Router warning).
+  useEffect(() => {
+    const nextOpen = [...openCodes][0] || '';
+    const meta = nextOpen ? modulesLookup?.[nextOpen] : null;
+    syncOpenModuleInUrl({
+      code: nextOpen,
+      moduleId: nextOpen ? String(meta?.moduleId || '') : '',
+      sectionId: nextOpen ? String(meta?.sectionId || '') : '',
+      view: urlView || undefined,
+    });
+  }, [openCodes, modulesLookup, urlView]);
+
+  const toggleOpen = (code) => {
+    if (!code) return;
+    void (async () => {
+      await flushActiveIntlModuleProgress();
+      // Open immediately — do not wait on GET (progress only worked after refresh otherwise).
+      setOpenCodes((prev) => {
+        const next = toggleOneOpenCode(prev, code);
+        writeOpenVideoCodes(persistKey, next);
+        return next;
+      });
+      try {
+        const remote = await intlPathwayProgressService.getModuleProgress(code);
+        if (remote && typeof remote === 'object') {
+          const remoteCode = String(remote.pathwayCode || remote.code || '').trim();
+          if (!remoteCode || remoteCode === code) upsertLocal(code, remote);
+        }
+      } catch {
+        // ignore — player also GETs on mount
+      }
+    })();
   };
+
+  useScrollOpenVideoIntoView(openCodes);
 
   const mappedCount = sections.reduce((n, s) => n + (s.codes?.length || 0), 0);
   const signupHref = `${paths.auth.signUp}?returnTo=${encodeURIComponent(returnTo)}`;
@@ -1162,8 +1462,10 @@ export function PathwayBrowseList({
                 minutes={resolveModuleMinutes(code, minutesByCode, modulesLookup)}
                 moduleMeta={modulesLookup?.[code]}
                 onToggleOpen={toggleOpen}
-                requireAuth={requireAuth}
                 canPlayVideo={canPlayVideo}
+                showLockIcon={showLockIcon}
+                progress={progressByCode?.[code] || null}
+                onProgress={upsertLocal}
                 signupHref={signupHref}
                 signInHref={signInHref}
               />

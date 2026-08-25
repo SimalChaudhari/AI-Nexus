@@ -23,7 +23,11 @@ import {
   promoteSalesforceAssociateMember,
 } from 'src/auth/context/jwt';
 import { fetchCurrentUser } from 'src/auth/context/jwt/session';
-import { endEservicesSessionAfterBlockedLogin } from 'src/auth/context/jwt/idp-browser-logout';
+import {
+  endEservicesSessionAfterBlockedLogin,
+  expireEservicesSessionOnFailedSignIn,
+  getAppSignInUrl,
+} from 'src/auth/context/jwt/idp-browser-logout';
 import {
   mergeSalesforceFromExchangeUser,
   mergeSalesforceFromOAuthCallbackSearchParams,
@@ -714,6 +718,7 @@ export default function OAuthCallbackPage() {
   const { checkUserSession } = useAuthContext();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [leavingToSignIn, setLeavingToSignIn] = useState(false);
 
   useEffect(() => {
     let lockStorageKey = '';
@@ -1194,6 +1199,16 @@ export default function OAuthCallbackPage() {
     run();
   }, [searchParams, router, checkUserSession]);
 
+  const handleGoToSignInPage = async () => {
+    if (leavingToSignIn) return;
+    setLeavingToSignIn(true);
+    try {
+      await expireEservicesSessionOnFailedSignIn(searchParams.get('socialAccessToken') || '');
+    } finally {
+      window.location.replace(getAppSignInUrl());
+    }
+  };
+
   const pageShellSx = {
     minHeight: '100dvh',
     width: 1,
@@ -1299,15 +1314,15 @@ export default function OAuthCallbackPage() {
                 </Button>
               )}
               <Button
-                component={RouterLink}
-                href={paths.auth.simple.signIn}
                 variant={studentLoginPending ? 'outlined' : 'contained'}
                 size="large"
                 fullWidth
+                disabled={leavingToSignIn}
+                onClick={handleGoToSignInPage}
                 startIcon={<Iconify icon="solar:login-3-bold" width={20} />}
                 sx={{ fontWeight: 700, borderRadius: 2 }}
               >
-                Go to sign in page
+                {leavingToSignIn ? 'Signing out…' : 'Go to sign in page'}
               </Button>
             </Stack>
           </Stack>

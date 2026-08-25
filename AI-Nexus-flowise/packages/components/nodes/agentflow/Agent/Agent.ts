@@ -42,6 +42,11 @@ import {
 import { sanitizeFileName } from '../../../src/validator'
 import { getModelConfigByModelName, MODEL_TYPE } from '../../../src/modelLoader'
 
+/** Cap recursive Agent tool rounds per node (prevents unbounded tool loops / memory growth). */
+const AGENT_MAX_TOOL_ROUNDS = process.env.AGENT_MAX_TOOL_ROUNDS
+    ? Math.max(1, parseInt(process.env.AGENT_MAX_TOOL_ROUNDS))
+    : 8
+
 interface ITool {
     agentSelectedTool: string
     agentSelectedToolConfig: ICommonObject
@@ -2155,7 +2160,8 @@ class Agent_Agentflow implements INode {
         iterationContext,
         isStructuredOutput = false,
         accumulatedReasonContent: initialAccumulatedReasonContent,
-        accumulatedReasoningDuration: initialAccumulatedReasoningDuration
+        accumulatedReasoningDuration: initialAccumulatedReasoningDuration,
+        toolRoundDepth = 0
     }: {
         response: AIMessageChunk
         messages: BaseMessageLike[]
@@ -2172,6 +2178,7 @@ class Agent_Agentflow implements INode {
         isStructuredOutput?: boolean
         accumulatedReasonContent?: string
         accumulatedReasoningDuration?: number
+        toolRoundDepth?: number
     }): Promise<{
         response: AIMessageChunk
         usedTools: IUsedTool[]
@@ -2193,6 +2200,21 @@ class Agent_Agentflow implements INode {
         let accumulatedReasoningDuration = initialAccumulatedReasoningDuration ?? 0
 
         if (!response.tool_calls || response.tool_calls.length === 0) {
+            return {
+                response,
+                usedTools: [],
+                sourceDocuments: [],
+                artifacts: [],
+                totalTokens,
+                accumulatedReasonContent: accumulatedReasonContent || undefined,
+                accumulatedReasoningDuration: accumulatedReasoningDuration || undefined
+            }
+        }
+
+        if (toolRoundDepth >= AGENT_MAX_TOOL_ROUNDS) {
+            console.warn(
+                `[Agent] Max tool rounds (${AGENT_MAX_TOOL_ROUNDS}) reached — stopping recursive tool calls to limit memory`
+            )
             return {
                 response,
                 usedTools: [],
@@ -2472,7 +2494,8 @@ class Agent_Agentflow implements INode {
                 iterationContext,
                 isStructuredOutput,
                 accumulatedReasonContent,
-                accumulatedReasoningDuration
+                accumulatedReasoningDuration,
+                toolRoundDepth: toolRoundDepth + 1
             })
 
             // Merge results from recursive tool calls

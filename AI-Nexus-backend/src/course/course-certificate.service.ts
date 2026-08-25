@@ -20,6 +20,7 @@ import { AppSettingsService } from '../app-settings/app-settings.service';
 import { SalesforceBadgeService } from '../auth/salesforce-badge.service';
 import { UserEntity } from '../user/users.entity';
 import { buildCourseCertificatePdf } from './utils/certificate-pdf.util';
+import { mergeCertificateTemplateIntoInput } from './utils/certificate-pdf-shared.util';
 
 /** LinkedIn share text cannot use HTML/markdown — approximate bold with Mathematical Bold Unicode. */
 function toLinkedInBoldText(value: string): string {
@@ -1041,12 +1042,13 @@ export class CourseCertificateService {
       courseTitle = program?.title || courseTitle || 'Programme';
     }
 
-    const [cpe, transcript, publicSettings] = await Promise.all([
+    const [cpe, transcript, publicSettings, certTemplate] = await Promise.all([
       this.resolveCertificateCpeHours(row.userId, row),
       row.programId
         ? this.buildProgrammeTranscript(row.userId, row.programId)
         : this.buildCourseTranscript(row.userId, row.courseId, courseTitle),
       this.appSettingsService.getPublicSettings(),
+      this.appSettingsService.getCertificateTemplateForPdf(),
     ]);
 
     const learnerName =
@@ -1056,18 +1058,20 @@ export class CourseCertificateService {
 
     return {
       row,
-      payload: {
-        certificateNo: row.certificateNo,
-        learnerName,
-        courseTitle,
-        completedAt: row.completedAt,
-        earnedCpeHours: cpe.earnedCpeHours,
-        allocatedCpeHours: cpe.allocatedCpeHours,
-        pillarCpeHours: cpe.pillarCpeHours,
-        logoUrl: publicSettings?.logoUrl || null,
-        transcript,
-        issuerName: 'AI Nexus Learning Platform',
-      },
+      payload: mergeCertificateTemplateIntoInput(
+        {
+          certificateNo: row.certificateNo,
+          learnerName,
+          courseTitle,
+          completedAt: row.completedAt,
+          earnedCpeHours: cpe.earnedCpeHours,
+          allocatedCpeHours: cpe.allocatedCpeHours,
+          pillarCpeHours: cpe.pillarCpeHours,
+          logoUrl: publicSettings?.logoUrl || null,
+          transcript,
+        },
+        certTemplate,
+      ),
     };
   }
 
@@ -1216,6 +1220,7 @@ export class CourseCertificateService {
 
   async getAdminCertificates(filters: {
     userName?: string;
+    userId?: string;
     courseTitle?: string;
     courseId?: string;
     q?: string;
@@ -1232,6 +1237,10 @@ export class CourseCertificateService {
 
     if (filters.courseId) {
       qb.andWhere('cert.courseId = :courseId', { courseId: String(filters.courseId).trim() });
+    }
+
+    if (filters.userId) {
+      qb.andWhere('cert.userId = :userId', { userId: String(filters.userId).trim() });
     }
 
     if (filters.userName) {

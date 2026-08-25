@@ -24,6 +24,7 @@ export class EmailService {
     private fromEmail: string;
 
     constructor(private readonly appSettingsService: AppSettingsService) {
+    
     //    const isDevelopment = String(process.env.NODE_ENV || '').toLowerCase() !== 'production';
         this.fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@localhost';
 

@@ -168,14 +168,24 @@ export function UserListView() {
             { name: 'List' },
           ]}
           action={
-            <Button
-              component={RouterLink}
-              href={paths.admin.user.new}
-              variant="contained"
-              startIcon={<Iconify icon="mingcute:add-line" />}
-            >
-              New user
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                component={RouterLink}
+                href={paths.admin.user.bulkEnrolment}
+                variant="outlined"
+                startIcon={<Iconify icon="solar:upload-bold" />}
+              >
+                Bulk enrolment
+              </Button>
+              <Button
+                component={RouterLink}
+                href={paths.admin.user.new}
+                variant="contained"
+                startIcon={<Iconify icon="mingcute:add-line" />}
+              >
+                New user
+              </Button>
+            </Box>
           }
           sx={{ mb: { xs: 3, md: 5 } }}
         />

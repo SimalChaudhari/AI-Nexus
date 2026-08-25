@@ -51,6 +51,7 @@ const InvoiceEditPage = lazy(() => import('src/pages/dashboard/invoice/edit'));
 // User Management (Admin only)
 const UserListPage = lazy(() => import('src/pages/dashboard/user/list'));
 const UserCreatePage = lazy(() => import('src/pages/dashboard/user/new'));
+const UserBulkEnrolmentPage = lazy(() => import('src/pages/dashboard/user/bulk-enrolment'));
 const UserEditPage = lazy(() => import('src/pages/dashboard/user/edit'));
 const UserDetailsPage = lazy(() => import('src/pages/dashboard/user/details'));
 const UserProfileDetailPage = lazy(() => import('src/pages/dashboard/user/profile-detail'));
@@ -240,6 +241,7 @@ export const adminRoutes = [
           { element: <UserListPage />, index: true },
           { path: 'list', element: <UserListPage /> },
           { path: 'new', element: <UserCreatePage /> },
+          { path: 'bulk-enrolment', element: <UserBulkEnrolmentPage /> },
           { path: 'profile', element: <UserProfileOwnPage /> },
           { path: 'profile/:id', element: <UserProfileDetailPage /> },
           { path: ':id', element: <UserDetailsPage /> },

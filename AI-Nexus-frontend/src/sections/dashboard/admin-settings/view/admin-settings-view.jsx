@@ -61,6 +61,7 @@ import { EnrolOptionsSettingsCard } from './components/enrol-options-settings-ca
 import { EligibilityMembershipSettingsCard } from './components/eligibility-membership-settings-card';
 import { CeoLaunchSettingsCard } from './components/ceo-launch-settings-card';
 import { WelcomeEmailSettingsCard } from './components/welcome-email-settings-card';
+import { CertificateTemplateSettingsCard } from './components/certificate-template-settings-card';
 import {
   normalizeProgrammeFeesContent,
 } from 'src/sections/home/programme-fees-defaults';
@@ -2196,6 +2197,15 @@ export function AdminSettingsView() {
       description: 'Upload badge artwork and issuer label shown on learner My Badges.',
     },
     {
+      key: 'certificate-template',
+      badge: 'CT',
+      icon: 'solar:diploma-verified-bold',
+      iconColor: '#1565C0',
+      title: 'Certificate Template',
+      description:
+        'Certificate PDF wording, header logos (3), and signatory signature for pathway & course certificates.',
+    },
+    {
       key: 'workflow-templates-pitch',
       badge: 'AI',
       icon: 'solar:clipboard-list-bold',
@@ -2326,6 +2336,7 @@ export function AdminSettingsView() {
     'contact',
     'course-image',
     'digital-badge',
+    'certificate-template',
     'workflow-templates-pitch',
     'programme-fees',
     'programme-structure',
@@ -3490,6 +3501,7 @@ export function AdminSettingsView() {
         {activeSection === 'contact' && renderContactHeroSettings}
         {activeSection === 'course-image' && renderCourseDefaultImageSettings}
         {activeSection === 'digital-badge' && renderDigitalBadgeSettings}
+        {activeSection === 'certificate-template' && <CertificateTemplateSettingsCard />}
         {activeSection === 'workflow-templates-pitch' && renderWorkflowTemplatesPitchSettings}
         {activeSection === 'programme-fees' && renderProgrammeFeesSettings}
         {activeSection === 'programme-structure' && renderProgrammeStructureSettings}

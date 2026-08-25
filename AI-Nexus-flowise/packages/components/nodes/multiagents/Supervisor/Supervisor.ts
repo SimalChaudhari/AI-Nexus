@@ -88,8 +88,8 @@ class Supervisor_MultiAgents implements INode {
                 label: 'Recursion Limit',
                 name: 'recursionLimit',
                 type: 'number',
-                description: 'Maximum number of times a call can recurse. If not provided, defaults to 100.',
-                default: 100,
+                description: 'Maximum number of times a call can recurse. If not provided, defaults to 25.',
+                default: 25,
                 additionalParams: true
             },
             {
@@ -108,7 +108,7 @@ class Supervisor_MultiAgents implements INode {
         const supervisorPrompt = nodeData.inputs?.supervisorPrompt as string
         const supervisorLabel = nodeData.inputs?.supervisorName as string
         const _recursionLimit = nodeData.inputs?.recursionLimit as string
-        const recursionLimit = _recursionLimit ? parseFloat(_recursionLimit) : 100
+        const recursionLimit = _recursionLimit ? parseFloat(_recursionLimit) : 25
         const moderations = (nodeData.inputs?.inputModeration as Moderation[]) ?? []
         const summarization = nodeData.inputs?.summarization as string
 

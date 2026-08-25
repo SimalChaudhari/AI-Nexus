@@ -1558,6 +1558,7 @@ export class CourseController {
         @Query('limit') limit: string | undefined,
         @Query('q') q: string | undefined,
         @Query('userName') userName: string | undefined,
+        @Query('userId') userId: string | undefined,
         @Query('courseTitle') courseTitle: string | undefined,
         @Query('courseId') courseId: string | undefined,
         @Res() response: Response,
@@ -1567,6 +1568,7 @@ export class CourseController {
             limit: parsePositiveInteger(limit, 10),
             q,
             userName,
+            userId,
             courseTitle,
             courseId,
         });

@@ -5,7 +5,8 @@ declare module 'express' {
     user?: {
       id: string;
       email: string;
-      role: string;
+      role?: string;
+      typ?: string;
       username?: string;
       firstname?: string;
       lastname?: string;

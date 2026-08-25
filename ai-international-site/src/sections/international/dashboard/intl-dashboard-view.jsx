@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import CircularProgress from '@mui/material/CircularProgress';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
@@ -18,12 +19,15 @@ import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles
 import { INTL_NAVY, INTL_NAVY_DEEP, INTL_RED, INTL_SOFT_BG } from 'src/theme/intl-brand';
 import { getIntlMyPayments } from 'src/services/intl-payment.service';
 import { usePathwayModuleVideos } from '../pathway/use-pathway-module-videos';
+import { PathwayCertificateBar } from '../pathway/pathway-certificate-bar';
 import { DEFAULT_FOUNDATION_NOTE } from '../pathway/pathway-constants';
 import {
   PathwayBrowseList,
   PathwayPlannerView,
 } from '../pathway/pathway-planner-view';
+import { IntlPathwayProgressProvider } from '../pathway/use-intl-pathway-progress';
 import { IntlFooter } from '../intl-footer';
+import { INTL_APP_TOPBAR_HEIGHT } from '../intl-app-topbar';
 import { INTL_REGIONS } from '../intl-region';
 
 // ----------------------------------------------------------------------
@@ -36,11 +40,18 @@ const SECTION_LINKS = [
   { id: 'users', label: 'Pillars', icon: 'solar:widget-bold-duotone' },
 ];
 
-/** student purchase → Student only; full → By role + Pillars. */
+function normalizeMembershipPlan(value) {
+  const plan = String(value || '').trim().toLowerCase();
+  if (plan === 'student' || plan === 'full') return plan;
+  return null;
+}
+
+/** student purchase → Student only; full → By role + Pillars. Unknown plan → nothing yet. */
 function allowedSectionsForMembership(membershipType) {
-  const plan = String(membershipType || '').trim().toLowerCase();
+  const plan = normalizeMembershipPlan(membershipType);
   if (plan === 'student') return ['student'];
-  return ['roles', 'users'];
+  if (plan === 'full') return ['roles', 'users'];
+  return [];
 }
 
 const PILLAR_META = {
@@ -76,6 +87,7 @@ function useDbModulesCatalog() {
     const rows = Object.values(modulesByCode || {})
       .filter((row) => row && String(row.code || '').trim())
       .map((row) => ({
+        id: String(row.id || '').trim(),
         code: String(row.code).trim(),
         title: String(row.title || row.code).trim(),
         pillar: normalizePillar(row.pillar),
@@ -83,6 +95,9 @@ function useDbModulesCatalog() {
         bullets: Array.isArray(row.bullets) ? row.bullets : [],
         sortOrder: Number(row.sortOrder) || 0,
         videoUrl: String(row.videoUrl || '').trim() || '',
+        courseId: String(row.courseId || '').trim() || '',
+        moduleId: String(row.moduleId || '').trim() || '',
+        sectionId: String(row.sectionId || '').trim() || '',
       }))
       .sort((a, b) => {
         if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
@@ -102,7 +117,7 @@ function useDbModulesCatalog() {
   };
 }
 
-function SectionBlock({ eyebrow, title, subtitle, children, sx, hidden }) {
+function SectionBlock({ hidden = false, eyebrow, title, subtitle, children, sx }) {
   return (
     <Box
       component="section"
@@ -169,7 +184,8 @@ function SectionBlock({ eyebrow, title, subtitle, children, sx, hidden }) {
 }
 
 function readInitialSection(allowedIds) {
-  const allowed = Array.isArray(allowedIds) && allowedIds.length ? allowedIds : ['roles'];
+  const allowed = Array.isArray(allowedIds) ? allowedIds.filter(Boolean) : [];
+  if (!allowed.length) return null;
   const fallback = allowed[0];
   if (typeof window === 'undefined') return fallback;
   const params = new URLSearchParams(window.location.search);
@@ -184,6 +200,9 @@ function setSectionInUrl(id) {
   if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
   url.searchParams.set('view', id);
+  url.searchParams.delete('module');
+  url.searchParams.delete('moduleId');
+  url.searchParams.delete('section');
   url.hash = '';
   window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
@@ -191,67 +210,80 @@ function setSectionInUrl(id) {
 // ----------------------------------------------------------------------
 
 export function IntlDashboardView() {
-  const { user, refresh } = useIntlAuth();
+  const { user, ready: authReady, refresh } = useIntlAuth();
   const [planFromPayment, setPlanFromPayment] = useState(null);
+  const [planLookupDone, setPlanLookupDone] = useState(false);
 
   useEffect(() => {
+    if (!authReady) return undefined;
+    if (!user) {
+      setPlanFromPayment(null);
+      setPlanLookupDone(true);
+      return undefined;
+    }
+
     let active = true;
+    setPlanLookupDone(false);
     (async () => {
       try {
         const { latest } = await getIntlMyPayments();
-        const fromPay = String(
-          latest?.membershipType || latest?.items?.[0]?.membershipType || '',
-        )
-          .trim()
-          .toLowerCase();
+        const fromPay = normalizeMembershipPlan(
+          latest?.membershipType || latest?.items?.[0]?.membershipType,
+        );
         if (!active) return;
-        if (fromPay === 'student' || fromPay === 'full') {
+        if (fromPay) {
           setPlanFromPayment(fromPay);
-          if (String(user?.membershipType || '').toLowerCase() !== fromPay) {
+          if (normalizeMembershipPlan(user?.membershipType) !== fromPay) {
             await refresh();
           }
         }
       } catch {
         // keep session user plan
+      } finally {
+        if (active) setPlanLookupDone(true);
       }
     })();
     return () => {
       active = false;
     };
-  }, [user?.id, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authReady, user?.id, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const membershipType =
-    planFromPayment ||
-    (String(user?.membershipType || '').trim().toLowerCase() === 'student' ? 'student' : 'full');
+    normalizeMembershipPlan(planFromPayment) || normalizeMembershipPlan(user?.membershipType);
+
+  const planReady = Boolean(authReady && (membershipType || planLookupDone || !user));
+  const effectiveMembership = membershipType || (planReady && !user ? 'full' : null);
 
   const allowedSectionIds = useMemo(
-    () => allowedSectionsForMembership(membershipType),
-    [membershipType],
+    () => allowedSectionsForMembership(effectiveMembership),
+    [effectiveMembership],
   );
   const visibleSectionLinks = useMemo(
     () => SECTION_LINKS.filter((item) => allowedSectionIds.includes(item.id)),
     [allowedSectionIds],
   );
 
-  const [activeSection, setActiveSection] = useState(() =>
-    allowedSectionsForMembership(membershipType)[0],
-  );
+  const [activeSection, setActiveSection] = useState(null);
   const { dbModules, modulesLookup, minutesByCode, videoUrlsByCode, loading } =
     useDbModulesCatalog();
 
   useEffect(() => {
-    const initial = readInitialSection(allowedSectionIds);
-    setActiveSection(initial);
+    if (!planReady || !allowedSectionIds.length) return;
+    const next = allowedSectionIds.includes(activeSection)
+      ? activeSection
+      : readInitialSection(allowedSectionIds);
+    if (!next) return;
+    if (activeSection !== next) setActiveSection(next);
     if (typeof window === 'undefined') return;
 
     const url = new URL(window.location.href);
     const currentView = url.searchParams.get('view');
-    if (window.location.hash || !allowedSectionIds.includes(currentView)) {
+    if (window.location.hash || currentView !== next) {
       url.hash = '';
-      url.searchParams.set('view', initial);
+      url.searchParams.set('view', next);
       window.history.replaceState(null, '', `${url.pathname}${url.search}`);
     }
-  }, [allowedSectionIds]);
+  }, [planReady, allowedSectionIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectSection = (id) => {
     if (!allowedSectionIds.includes(id)) return;
@@ -298,9 +330,48 @@ export function IntlDashboardView() {
   }, [dbModules]);
 
   const emptyDbNote = !loading && dbModules.length === 0;
-  const isStudentPlan = membershipType === 'student';
+  const isStudentPlan = effectiveMembership === 'student';
+  const displaySection = allowedSectionIds.includes(activeSection)
+    ? activeSection
+    : readInitialSection(allowedSectionIds);
+
+  if (!planReady || !displaySection) {
+    return (
+      <Box
+        sx={{
+          width: '100%',
+          height: '100%',
+          minHeight: `calc(100dvh - ${INTL_APP_TOPBAR_HEIGHT}px)`,
+          display: 'grid',
+          placeItems: 'center',
+          bgcolor: INTL_SOFT_BG,
+          px: 2,
+        }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
+          <Box
+            sx={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              bgcolor: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              boxShadow: '0 8px 24px rgba(0, 32, 96, 0.12)',
+            }}
+          >
+            <CircularProgress size={26} thickness={4} sx={{ color: NAVY }} />
+          </Box>
+          <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: alpha(NAVY, 0.7) }}>
+            Loading your plan…
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
+    <IntlPathwayProgressProvider>
     <Box
       sx={{
         width: '100%',
@@ -405,7 +476,7 @@ export function IntlDashboardView() {
               sx={{ mt: { xs: 2.5, md: 3 } }}
             >
               {visibleSectionLinks.map((item) => {
-                const active = activeSection === item.id;
+                const active = displaySection === item.id;
                 return (
                   <Button
                     key={item.id}
@@ -443,10 +514,10 @@ export function IntlDashboardView() {
       <DashboardContent sx={{ ...HOME_DASHBOARD_CONTENT_SX, pt: 0, pb: 0 }}>
         {allowedSectionIds.includes('student') ? (
           <SectionBlock
-            hidden={activeSection !== 'student'}
+            hidden={displaySection !== 'student'}
             eyebrow="01 · Foundations"
             title="Student"
-            subtitle="Pillar 1 modules from the database — open any card to watch its video."
+            subtitle="Complete every Pillar 1 — Foundations module. Each video has its own unique watch progress. Your student certificate unlocks after all of them are complete."
           >
             {loading ? (
               <Typography sx={{ color: alpha(NAVY, 0.65) }}>Loading modules from database…</Typography>
@@ -455,33 +526,38 @@ export function IntlDashboardView() {
                 No Pillar 1 modules found in the database yet.
               </Typography>
             ) : (
-              <PathwayBrowseList
-                heading={
-                  <>
-                    Path for the{' '}
-                    <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
-                      Student
-                    </Box>
-                  </>
-                }
-                blurb="Only Pillar 1 modules saved in the database are shown here."
-                sections={studentSections}
-                videoUrlsByCode={videoUrlsByCode}
-                minutesByCode={minutesByCode}
-                modulesLookup={modulesLookup}
-                requireAuth
-                returnTo={`${paths.dashboard}?view=student`}
-              />
+              <>
+                <PathwayCertificateBar moduleCodes={studentSections[0]?.codes || []} />
+                <PathwayBrowseList
+                  persistKey="student"
+                  urlView="student"
+                  heading={
+                    <>
+                      Path for the{' '}
+                      <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
+                        Student
+                      </Box>
+                    </>
+                  }
+                  blurb="Each module tracks its own unique watch coverage. Finish all Pillar 1 videos to generate your student certificate."
+                  sections={studentSections}
+                  videoUrlsByCode={videoUrlsByCode}
+                  minutesByCode={minutesByCode}
+                  modulesLookup={modulesLookup}
+                  returnTo={`${paths.dashboard}?view=student`}
+                  showLockIcon
+                />
+              </>
             )}
           </SectionBlock>
         ) : null}
 
         {allowedSectionIds.includes('roles') ? (
           <SectionBlock
-            hidden={activeSection !== 'roles'}
+            hidden={displaySection !== 'roles'}
             eyebrow="02 · Recommended path"
             title="AI Fluency by role"
-            subtitle="Choose your role and build a recommended pathway for your practice."
+            subtitle="Choose your role and build a recommended pathway. By role and Pillars share one professional certificate — it unlocks after every pillar module is complete."
             sx={{
               bgcolor: alpha(NAVY, 0.03),
               mx: { xs: -1.25, sm: -2, md: -3, lg: -4 },
@@ -497,10 +573,10 @@ export function IntlDashboardView() {
 
         {allowedSectionIds.includes('users') ? (
           <SectionBlock
-            hidden={activeSection !== 'users'}
+            hidden={displaySection !== 'users'}
             eyebrow="03 · Full catalogue"
             title="Pillars"
-            subtitle="All pillars and modules from the database — whatever is saved is what you see."
+            subtitle="All pillars and modules. Same professional certificate as By role — issued only after every module is complete."
           >
             {loading ? (
               <Typography sx={{ color: alpha(NAVY, 0.65) }}>Loading modules from database…</Typography>
@@ -509,23 +585,27 @@ export function IntlDashboardView() {
                 No pathway modules found in the database yet.
               </Typography>
             ) : (
-              <PathwayBrowseList
-                heading={
-                  <>
-                    Browse by{' '}
-                    <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
-                      Pillar
-                    </Box>
-                  </>
-                }
-                blurb="Every module from the database, grouped by its pillar."
-                sections={usersSections}
-                videoUrlsByCode={videoUrlsByCode}
-                minutesByCode={minutesByCode}
-                modulesLookup={modulesLookup}
-                requireAuth
-                returnTo={`${paths.dashboard}?view=users`}
-              />
+              <>
+                <PathwayCertificateBar moduleCodes={dbModules.map((row) => row.code)} />
+                <PathwayBrowseList
+                  persistKey="users"
+                  urlView="users"
+                  heading={
+                    <>
+                      Browse by{' '}
+                      <Box component="span" sx={{ color: INTL_NAVY_DEEP, fontStyle: 'italic' }}>
+                        Pillar
+                      </Box>
+                    </>
+                  }
+                  blurb="Each module tracks its own unique watch coverage. Finish all pillar modules for one professional certificate."
+                  sections={usersSections}
+                  videoUrlsByCode={videoUrlsByCode}
+                  minutesByCode={minutesByCode}
+                  modulesLookup={modulesLookup}
+                  returnTo={`${paths.dashboard}?view=users`}
+                />
+              </>
             )}
           </SectionBlock>
         ) : null}
@@ -533,5 +613,6 @@ export function IntlDashboardView() {
 
       <IntlFooter regions={INTL_REGIONS} />
     </Box>
+    </IntlPathwayProgressProvider>
   );
 }

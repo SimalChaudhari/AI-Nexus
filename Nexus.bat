@@ -52,7 +52,7 @@ timeout /t 2 >nul
 :: Flowise Backend
 :: =====================================================
 echo [5/5] Starting Flowise Backend...
-start "Flowise Backend" cmd /k "cd /d %ROOT%\AI-Nexus-flowise && pnpm run start:prod >> "%LOGS%\flowise-backend.log" 2>&1"
+start "Flowise Backend" cmd /k "cd /d %ROOT%\AI-Nexus-flowise && npm run start:api:prod >> "%LOGS%\flowise-backend.log" 2>&1"
 
 echo.
 echo =====================================================

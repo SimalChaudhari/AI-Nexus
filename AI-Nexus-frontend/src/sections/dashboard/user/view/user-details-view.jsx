@@ -22,6 +22,7 @@ import { EntityDetailsLayout } from 'src/components/entity-details-layout';
 import { buildSalesforceProfileDetailRows } from 'src/components/user-salesforce-profile-fields';
 import { getJobRoleAuditStatus, UserFeeWaiverAuditPanel } from './user-fee-waiver-audit-panel';
 import { UserTrackingPanel } from './user-tracking-panel';
+import { UserCertificatesPanel } from './user-certificates-panel';
 
 // ----------------------------------------------------------------------
 
@@ -35,6 +36,11 @@ const DETAIL_TABS = [
     value: 'tracking',
     label: 'Tracking',
     icon: <Iconify icon="solar:graph-up-bold" width={20} />,
+  },
+  {
+    value: 'certificates',
+    label: 'Certificates',
+    icon: <Iconify icon="solar:diploma-verified-bold" width={20} />,
   },
 ];
 
@@ -192,6 +198,7 @@ export function UserDetailsView({
 
   const isProfile = tabs.value === 'profile';
   const isTracking = tabs.value === 'tracking';
+  const isCertificates = tabs.value === 'certificates';
 
   return (
     <EntityDetailsLayout
@@ -230,6 +237,10 @@ export function UserDetailsView({
         isTracking ? (
           <Box>
             <UserTrackingPanel userId={user.id} />
+          </Box>
+        ) : isCertificates ? (
+          <Box>
+            <UserCertificatesPanel userId={user.id} />
           </Box>
         ) : null
       }

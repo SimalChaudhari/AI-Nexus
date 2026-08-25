@@ -6,6 +6,8 @@ export * from './user-cards-view';
 
 export * from './user-create-view';
 
+export * from './user-bulk-enrolment-view';
+
 export * from './user-profile-view';
 
 export * from './user-details-view';
@@ -13,5 +15,7 @@ export * from './user-details-view';
 export * from './user-fee-waiver-audit-panel';
 
 export * from './user-tracking-panel';
+
+export * from './user-certificates-panel';
 
 export * from './user-profile-detail-view';

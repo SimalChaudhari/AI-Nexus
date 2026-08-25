@@ -6,6 +6,7 @@ import { UserEntity } from '../user/users.entity';
 import { IntlAuthController } from './intl-auth.controller';
 import { IntlAuthInitService } from './intl-auth-init.service';
 import { IntlAuthService } from './intl-auth.service';
+import { IntlJwtAuthGuard } from './intl-jwt-auth.guard';
 import { InternationalUserEntity } from './international-user.entity';
 
 @Module({
@@ -18,7 +19,7 @@ import { InternationalUserEntity } from './international-user.entity';
     }),
   ],
   controllers: [IntlAuthController],
-  providers: [IntlAuthService, IntlAuthInitService],
-  exports: [IntlAuthService],
+  providers: [IntlAuthService, IntlAuthInitService, IntlJwtAuthGuard],
+  exports: [IntlAuthService, IntlJwtAuthGuard, JwtModule],
 })
 export class IntlAuthModule {}

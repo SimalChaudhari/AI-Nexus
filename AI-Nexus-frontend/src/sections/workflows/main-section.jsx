@@ -8,7 +8,6 @@ import Typography from '@mui/material/Typography';
 
 import { MyWorkflows } from './my-workflows';
 import { Skills } from './skills';
-// Flowise Templates tab hidden for now — restore when ready to show again
 // import { Templates } from './templates';
 import { Newsletter } from './newsletter';
 import { PROMPT_PROVIDER_IDS } from './data/prompt-providers';
@@ -18,6 +17,7 @@ import { WorkflowMainTabIcon } from './workflow-main-tab-icon';
 // ----------------------------------------------------------------------
 
 const WORKFLOW_MAIN_TABS = [
+  // Templates tab temporarily hidden
   // {
   //   id: 'templates',
   //   label: 'Templates',
@@ -50,7 +50,6 @@ export function WorkflowMainSection() {
   const theme = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromQuery = searchParams.get('tab');
-  // Default to AI Playbook Prompts while Flowise Templates is hidden
   const resolveTab = (tab) =>
     tab === 'tools' || tab === 'resources' || tab === 'newsletter' ? tab : 'resources';
   const initialTab = resolveTab(tabFromQuery);
@@ -201,6 +200,7 @@ export function WorkflowMainSection() {
       </Box>
 
       <Box>
+        {/* Templates tab temporarily hidden */}
         {/* {activeTab === 'templates' && <Templates />} */}
         {activeTab === 'resources' && (
           <>

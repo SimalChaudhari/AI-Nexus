@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -20,6 +20,7 @@ import { paths } from 'src/routes/paths';
 import { useIntlAuth } from 'src/auth/intl-auth-context';
 import { notifyNavigationStart } from 'src/components/navigation-progress';
 import { INTL_NAVY, INTL_RED } from 'src/theme/intl-brand';
+import { navigateToAuthPath } from 'src/utils/intl-auth-navigate';
 
 // ----------------------------------------------------------------------
 
@@ -61,8 +62,14 @@ function IntlAccountMenuComponent({ sx }) {
     handleClose();
     notifyNavigationStart();
     signOut();
-    router.push(paths.auth.signIn);
+    navigateToAuthPath(router, paths.auth.signIn);
   };
+
+  useEffect(() => {
+    if (!open || !user) return;
+    router.prefetch(paths.profile);
+    router.prefetch(paths.dashboard);
+  }, [open, user, router]);
 
   if (!ready && !user) {
     return (
@@ -249,8 +256,8 @@ function IntlAccountMenuComponent({ sx }) {
             href={paths.profile}
             prefetch
             onClick={() => {
-              handleClose();
               notifyNavigationStart();
+              handleClose();
             }}
             sx={{
               borderRadius: 1,

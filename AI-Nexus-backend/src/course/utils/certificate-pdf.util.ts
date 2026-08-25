@@ -1,12 +1,23 @@
 import PDFDocument from 'pdfkit';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  PDFDocument as PdfLibDocument,
+  rgb,
+  StandardFonts,
+  type PDFFont,
+  type PDFPage,
+  type RGB,
+} from 'pdf-lib';
+import {
   BuildCertificatePdfInput,
-  drawTripleLogoHeader,
-  fontOrFallback,
+  CERTIFICATE_TEMPLATE_DEFAULTS,
   formatCompletedDate,
+  readRasterImageSize,
   registerCertificateFonts,
+  resolveFontPath,
+  resolvePublicCertificateAsset,
+  resolveUploadAssetPath,
 } from './certificate-pdf-shared.util';
 import { drawTranscriptPage } from './transcript-pdf.util';
 
@@ -16,16 +27,14 @@ export type {
   CertificatePdfTranscriptSection,
 } from './certificate-pdf-shared.util';
 
-/** Exact COA palette from CPDCOACert chinese sample */
+/** Exact COA palette from official ISCA sample. */
 const COA = {
   navy: '#1A4A82',
   navyDeep: '#0E3A6E',
-  lightBlue: '#000000',
-  midBlue: '#000000',
+  lightBlue: '#1A4A82',
+  midBlue: '#1A4A82',
   gold: '#C5A24A',
-  deco: '#C8C8C8',
-  script: '#2A2A2A',
-  line: '#1A4A82',
+  certNo: '#6B6B6B',
 };
 
 function resolveAsset(...parts: string[]): string | null {
@@ -33,251 +42,474 @@ function resolveAsset(...parts: string[]): string | null {
   return existsSync(path) ? path : null;
 }
 
-function resolveSignaturePath(): string | null {
+function resolveBlankCertificatePdfPath(): string | null {
+  return (
+    resolveAsset('public', 'certificate', 'certificate-singapore.pdf') ||
+    resolveAsset('public', 'certificate', 'certificate.pdf') ||
+    resolveAsset('assets', 'certificate', 'certificate-singapore.pdf') ||
+    resolveAsset('assets', 'certificate', 'certificate.pdf') ||
+    resolveAsset('public', 'uploads', 'certificate', 'certificate.pdf')
+  );
+}
+
+function resolveSignaturePath(signatureUrl?: string | null): string | null {
+  const uploaded = resolveUploadAssetPath(signatureUrl);
+  if (uploaded) return uploaded;
   return (
     resolveAsset('public', 'certificate', 'signature.png') ||
     resolveAsset('public', 'uploads', 'certificate', 'signature.png')
   );
 }
 
-function registerCjkFont(doc: PDFKit.PDFDocument) {
-  const candidates = [
-    'C:/Windows/Fonts/simsunb.ttf',
-    'C:/Windows/Fonts/msyh.ttc',
-    'C:/Windows/Fonts/simsun.ttc',
-    join(process.cwd(), 'assets', 'fonts', 'NotoSansSC-Regular.otf'),
-  ];
-  for (const path of candidates) {
-    if (!existsSync(path)) continue;
+/** A4 reference height — scale footer/header for letter-sized templates. */
+const REF_PAGE_H = 842.28;
+
+async function embedRasterImage(pdf: PdfLibDocument, filePath: string) {
+  const bytes = readFileSync(filePath);
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    return pdf.embedJpg(bytes);
+  }
+  return pdf.embedPng(bytes);
+}
+
+/** Same triple-logo lockup as `drawTripleLogoHeader` in certificate-pdf-shared (top 52, height 38). */
+async function drawTripleLogoHeaderPdfLib(
+  pdf: PdfLibDocument,
+  page: PDFPage,
+  pageWidth: number,
+  pageHeight: number,
+  logoUrls?: (string | null | undefined)[],
+): Promise<void> {
+  const scale = pageHeight / REF_PAGE_H;
+  const logoHeight = 38 * scale;
+  const topFromPageTop = 52 * scale;
+  const staticFiles = ['img2.png', 'img1.png', 'img3.png'];
+  const logos: { image: Awaited<ReturnType<typeof embedRasterImage>>; width: number; height: number }[] = [];
+
+  for (let i = 0; i < staticFiles.length; i += 1) {
+    const file = staticFiles[i];
+    const customPath = resolveUploadAssetPath(logoUrls?.[i]);
+    const path = customPath || resolvePublicCertificateAsset(file);
+    if (!path) continue;
+    const size = readRasterImageSize(path);
+    if (!size?.height) continue;
     try {
-      doc.registerFont('CertCJK', path);
-      return;
+      const image = await embedRasterImage(pdf, path);
+      logos.push({
+        image,
+        width: (size.width / size.height) * logoHeight,
+        height: logoHeight,
+      });
     } catch {
-      // next
+      // skip
     }
   }
+  if (logos.length === 0) return;
+
+  const gap = 4 * scale;
+  const dividerGap = 4 * scale;
+  const dividersWidth = Math.max(0, logos.length - 1) * (dividerGap * 2 + 1);
+  const logosWidth = logos.reduce((sum, l) => sum + l.width, 0);
+  const totalWidth = logosWidth + gap * Math.max(0, logos.length - 1) + dividersWidth;
+
+  const maxLogoH = Math.max(...logos.map((l) => l.height));
+  const drawLogoY = pageHeight - topFromPageTop - maxLogoH;
+  const dividerH = Math.max(24 * scale, logoHeight - 6 * scale);
+  const maskPadX = 6 * scale;
+  const maskPadY = 4 * scale;
+  const lockupX = (pageWidth - totalWidth) / 2;
+
+  // Mask only the logo lockup — not full page width
+  page.drawRectangle({
+    x: lockupX - maskPadX,
+    y: drawLogoY - maskPadY,
+    width: totalWidth + maskPadX * 2,
+    height: maxLogoH + maskPadY * 2,
+    color: rgb(1, 1, 1),
+  });
+
+  let x = lockupX;
+  for (let i = 0; i < logos.length; i += 1) {
+    const logo = logos[i];
+    if (i > 0) {
+      x += gap;
+      const dx = x + dividerGap;
+      const dy = drawLogoY + (logoHeight - dividerH) / 2;
+      page.drawLine({
+        start: { x: dx, y: dy },
+        end: { x: dx, y: dy + dividerH },
+        thickness: 0.7,
+        color: rgb(154 / 255, 160 / 255, 166 / 255),
+      });
+      x += dividerGap * 2 + 1;
+    }
+    page.drawImage(logo.image, { x, y: drawLogoY, width: logo.width, height: logo.height });
+    x += logo.width;
+  }
+}
+
+function drawCenteredInBand(
+  page: PDFPage,
+  text: string,
+  bandX: number,
+  bandWidth: number,
+  yBottom: number,
+  size: number,
+  font: PDFFont,
+  color: RGB,
+  spacing = 0,
+) {
+  const textWidth =
+    spacing > 0
+      ? spacedWidth(font, text, size, spacing)
+      : font.widthOfTextAtSize(text, size);
+  const x = bandX + (bandWidth - textWidth) / 2;
+  if (spacing > 0) {
+    drawSpacedText(page, text, x, yBottom, size, font, color, spacing);
+  } else {
+    page.drawText(text, { x, y: yBottom, size, font, color });
+  }
+}
+
+async function drawDynamicSignatoryFooter(
+  pdf: PdfLibDocument,
+  page: PDFPage,
+  pageWidth: number,
+  pageHeight: number,
+  input: BuildCertificatePdfInput,
+  sans: PDFFont,
+): Promise<void> {
+  const scale = pageHeight / REF_PAGE_H;
+  const navy = hexRgb(COA.navy);
+
+  const signatoryTitle =
+    String(input.signatoryTitle || CERTIFICATE_TEMPLATE_DEFAULTS.signatoryTitle).trim() ||
+    CERTIFICATE_TEMPLATE_DEFAULTS.signatoryTitle;
+  const issuerName =
+    String(input.issuerName || CERTIFICATE_TEMPLATE_DEFAULTS.issuerName).trim() ||
+    CERTIFICATE_TEMPLATE_DEFAULTS.issuerName;
+  const certNo = String(input.certificateNo || '').trim();
+  const certNoLabel = certNo ? `CERTIFICATE NO: ${certNo}` : 'CERTIFICATE NO:';
+
+  const smallSize = 9 * scale;
+  const certSpacing = 0.8;
+  const sigW = 120 * scale;
+  const sigH = 38 * scale;
+
+  const certNoY = 68 * scale;
+  const lift = 14 * scale;
+  const issuerY = certNoY + 26 * scale + lift;
+  // Extra whitespace between issuer and signatory title.
+  const titleY = issuerY + 18 * scale;
+  // Signature above title — no signatory name text
+  const sigY = titleY + 6 * scale + sigH;
+
+  const lockupWidth = Math.max(
+    sigW,
+    sans.widthOfTextAtSize(signatoryTitle, smallSize),
+    sans.widthOfTextAtSize(issuerName, smallSize),
+    spacedWidth(sans, certNoLabel, smallSize, certSpacing),
+  );
+  const lockupX = (pageWidth - lockupWidth) / 2;
+
+  const signaturePath = resolveSignaturePath(input.signatureUrl);
+  if (signaturePath) {
+    try {
+      const sigImage = await embedRasterImage(pdf, signaturePath);
+      page.drawImage(sigImage, {
+        x: lockupX + (lockupWidth - sigW) / 2,
+        y: sigY,
+        width: sigW,
+        height: sigH,
+      });
+    } catch {
+      // skip
+    }
+  }
+
+  drawCenteredInBand(page, signatoryTitle, lockupX, lockupWidth, titleY, smallSize, sans, navy);
+  drawCenteredInBand(page, issuerName, lockupX, lockupWidth, issuerY, smallSize, sans, navy);
+  drawCenteredInBand(
+    page,
+    certNoLabel,
+    lockupX,
+    lockupWidth,
+    certNoY,
+    smallSize,
+    sans,
+    navy,
+    certSpacing,
+  );
+}
+
+function hexRgb(hex: string): RGB {
+  const raw = hex.replace('#', '');
+  const n = parseInt(raw, 16);
+  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
 }
 
 function hasCjk(text: string): boolean {
   return /[\u3400-\u9FFF\uF900-\uFAFF]/.test(text);
 }
 
-function drawDecorations(_doc: PDFKit.PDFDocument) {
-  // Corner ribbon / patti decorations removed
-}
-
-/**
- * Vertical "certificate" — ISCA COA thin calligraphy style (French Script MT).
- */
-function drawVerticalCertificateWord(doc: PDFKit.PDFDocument) {
-  const pageHeight = doc.page.height;
-
-  doc.save();
-  // Official-feel thin calligraphy (closest system match to COA sample)
-  const scriptFonts = [
-
-    'C:/Windows/Fonts/FRSCRIPT.TTF', // French Script MT
-    'C:/Windows/Fonts/KUNSTLER.TTF', // Kunstler Script
-    'C:/Windows/Fonts/segoesc.ttf', // Segoe Script
-    'C:/Windows/Fonts/VIVALDII.TTF',
-  ];
-  let loaded = false;
-  for (const path of scriptFonts) {
-    if (!existsSync(path)) continue;
+async function embedFontFile(
+  pdf: PdfLibDocument,
+  fileName: string,
+  fallback: StandardFonts,
+): Promise<PDFFont> {
+  const path = resolveFontPath(fileName);
+  if (path) {
     try {
-      doc.registerFont('CertCoaScript', path);
-      doc.font('CertCoaScript');
-      loaded = true;
-      break;
+      return await pdf.embedFont(readFileSync(path), { subset: true });
     } catch {
-      // try next
+      // fall through
     }
   }
-  if (!loaded) {
-    fontOrFallback(doc, 'CertScript', 'Times-Italic');
+  return pdf.embedFont(fallback);
+}
+
+function spacedWidth(font: PDFFont, text: string, size: number, spacing: number): number {
+  let w = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    w += font.widthOfTextAtSize(text[i], size);
+    if (i < text.length - 1) w += spacing;
   }
-
-  const fontSize = 56;
-  doc.fontSize(fontSize).fillColor('#6A6A6A');
-  // Measure stretched word length, then center it vertically on the left
-  const word = 'certificate';
-  const wordWidth =
-    doc.widthOfString(word) + Math.max(0, word.length - 1) * 14;
-  const startY = (pageHeight + wordWidth) / 2;
-  doc.translate(fontSize + 18, startY);
-  doc.rotate(-90);
-  doc.text(word, 0, 0, { lineBreak: false, characterSpacing: 14 });
-  doc.restore();
+  return w;
 }
 
-function drawCoaHeaderLockup(doc: PDFKit.PDFDocument, top = 52): number {
-  return drawTripleLogoHeader(doc, top, 38);
-}
-
-function drawCentered(
-  doc: PDFKit.PDFDocument,
+function drawSpacedText(
+  page: PDFPage,
   text: string,
-  y: number,
-  opts: {
-    size: number;
-    color: string;
-    bold?: boolean;
-    /** Approximate CSS font-weight (Crimson Pro uses stroke for 500/600). */
-    weight?: 400 | 500 | 600 | 700;
-    spacing?: number;
-    width?: number;
-    x?: number;
-    font?: 'serif' | 'sans' | 'script' | 'cjk';
-  },
+  x: number,
+  yBottom: number,
+  size: number,
+  font: PDFFont,
+  color: RGB,
+  spacing: number,
+): number[] {
+  const xs: number[] = [];
+  let cursor = x;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    xs.push(cursor);
+    page.drawText(ch, { x: cursor, y: yBottom, size, font, color });
+    cursor += font.widthOfTextAtSize(ch, size) + (i < text.length - 1 ? spacing : 0);
+  }
+  return xs;
+}
+
+function drawCenteredText(
+  page: PDFPage,
+  text: string,
+  pageWidth: number,
+  yBottom: number,
+  size: number,
+  font: PDFFont,
+  color: RGB,
+  spacing = 0,
 ) {
-  const pageWidth = doc.page.width;
-  const contentX = opts.x ?? 70;
-  const contentWidth = opts.width ?? pageWidth - contentX * 2;
-
-  if (opts.font === 'cjk') {
-    try {
-      doc.font('CertCJK');
-    } catch {
-      fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
-    }
-  } else if (opts.font === 'script') {
-    fontOrFallback(doc, 'CertScript', 'Times-Italic');
-  } else if (opts.font === 'serif') {
-    const useBoldFace = opts.bold || opts.weight === 700;
-    fontOrFallback(
-      doc,
-      useBoldFace ? 'CertSerif-Bold' : 'CertSerif',
-      useBoldFace ? 'Times-Bold' : 'Times-Roman',
-    );
+  const width =
+    spacing > 0
+      ? spacedWidth(font, text, size, spacing)
+      : font.widthOfTextAtSize(text, size);
+  const x = (pageWidth - width) / 2;
+  if (spacing > 0) {
+    drawSpacedText(page, text, x, yBottom, size, font, color, spacing);
   } else {
-    fontOrFallback(
-      doc,
-      opts.bold ? 'CertSans-Bold' : 'CertSans',
-      opts.bold ? 'Helvetica-Bold' : 'Helvetica',
-    );
+    page.drawText(text, { x, y: yBottom, size, font, color });
   }
+}
 
-  doc.fontSize(opts.size).fillColor(opts.color);
+function wrapLines(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const paragraphs = String(text || '')
+    .split(/\r?\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (paragraphs.length === 0) return [];
 
-  // Crimson Pro file is variable (embeds at 400). Stroke approximates heavier weight.
-  const strokeWeight =
-    opts.font === 'serif' && opts.weight != null && opts.weight >= 500 ? opts.weight : null;
-  if (strokeWeight != null) {
-    const lineWidth =
-      strokeWeight >= 700 ? 0.6 : strokeWeight >= 600 ? 0.45 : 0.28;
-    doc.strokeColor(opts.color).lineWidth(lineWidth);
+  const lines: string[] = [];
+  for (const paragraph of paragraphs) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    let line = '';
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (font.widthOfTextAtSize(test, size) <= maxWidth) {
+        line = test;
+      } else {
+        if (line) lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
   }
-
-  doc.text(text, contentX, y, {
-    width: contentWidth,
-    align: 'center',
-    characterSpacing: opts.spacing ?? 0,
-    lineBreak: false,
-    fill: true,
-    stroke: strokeWeight != null,
-  });
+  return lines;
 }
 
 /**
- * Exact layout from CPDCOACert chinese 1.pdf / official ISCA COA sample.
+ * Stamp dynamic fields onto blank `certificate.pdf` template.
+ * Template already has: logo, vertical Certificate, deco, signature block.
+ * Fonts + spacing match the previous pdfkit COA layout.
  */
-function drawCertificatePage(doc: PDFKit.PDFDocument, input: BuildCertificatePdfInput) {
-  const pageWidth = doc.page.width;
-  const contentX = 70;
-  const contentWidth = pageWidth - contentX * 2;
+async function stampCertificateTemplate(
+  input: BuildCertificatePdfInput,
+): Promise<Uint8Array> {
+  const templatePath = resolveBlankCertificatePdfPath();
+  if (!templatePath) {
+    throw new Error('Blank certificate template not found: public/certificate/certificate.pdf');
+  }
 
-  // No border — decorations + vertical script like sample
-  drawDecorations(doc);
-  drawVerticalCertificateWord(doc);
+  const pdf = await PdfLibDocument.load(readFileSync(templatePath));
+  const page = pdf.getPages()[0];
+  const { width, height } = page.getSize();
+  const scale = height / REF_PAGE_H;
 
-  let y = drawCoaHeaderLockup(doc, 40);
-  // Title block sits higher + smaller than body
-  y += 6;
+  const serifBold = await embedFontFile(pdf, 'CrimsonPro-Bold.ttf', StandardFonts.TimesRomanBold);
+  const sans = await embedFontFile(pdf, 'OpenSans-Regular.ttf', StandardFonts.Helvetica);
+  const sansBold = await embedFontFile(pdf, 'OpenSans-Bold.ttf', StandardFonts.HelveticaBold);
+  const script = await embedFontFile(pdf, 'Amithen.ttf', StandardFonts.TimesRomanItalic);
 
-  drawCentered(doc, 'CERTIFICATE', y, {
-    size: 28,
-    color: COA.navyDeep,
-    weight: 700,
-    spacing: 8,
-    font: 'serif',
-  });
-  y += 28;
-  drawCentered(doc, 'OF ATTENDANCE', y, {
-    size: 28,
-    color: COA.navyDeep,
-    weight: 700,
-    spacing: 5.5,
-    font: 'serif',
-  });
+  const navy = hexRgb(COA.navy);
+  const navyDeep = hexRgb(COA.navyDeep);
+  const gold = hexRgb(COA.gold);
 
-  y += 36;
-  drawCentered(doc, 'has been awarded to', y, {
-    size: 10,
-    color: COA.lightBlue,
-    spacing: 1.5,
-    font: 'sans',
-  });
+  await drawTripleLogoHeaderPdfLib(pdf, page, width, height, input.logoUrls);
 
-  y += 22;
+  // Top-down Y (same as previous pdfkit layout); pdf-lib draws from bottom
+  const toY = (topY: number, size: number) => height - topY - size;
+
+  let top = 112 * scale;
+  const contentPad = 70 * scale;
+  const contentWidth = width - contentPad * 2;
+
+  const titleLine1 =
+    String(input.titleLine1 || CERTIFICATE_TEMPLATE_DEFAULTS.titleLine1).trim() ||
+    CERTIFICATE_TEMPLATE_DEFAULTS.titleLine1;
+  const titleLine2Left =
+    String(input.titleLine2Left || CERTIFICATE_TEMPLATE_DEFAULTS.titleLine2Left).trim() ||
+    CERTIFICATE_TEMPLATE_DEFAULTS.titleLine2Left;
+  const titleLine2Right =
+    String(input.titleLine2Right || CERTIFICATE_TEMPLATE_DEFAULTS.titleLine2Right).trim() ||
+    CERTIFICATE_TEMPLATE_DEFAULTS.titleLine2Right;
+  const awardedToLabel =
+    String(input.awardedToLabel || CERTIFICATE_TEMPLATE_DEFAULTS.awardedToLabel).trim() ||
+    CERTIFICATE_TEMPLATE_DEFAULTS.awardedToLabel;
+  const sessionLabel =
+    String(input.sessionLabel || CERTIFICATE_TEMPLATE_DEFAULTS.sessionLabel).trim() ||
+    CERTIFICATE_TEMPLATE_DEFAULTS.sessionLabel;
+  const cpeSectionLabel =
+    String(input.cpeSectionLabel || CERTIFICATE_TEMPLATE_DEFAULTS.cpeSectionLabel).trim() ||
+    CERTIFICATE_TEMPLATE_DEFAULTS.cpeSectionLabel;
+
+  // Title lockup — Crimson Pro Bold, size 28, letterSpacing 6
+  const titleSize = 28;
+  const letterSpacing = 6;
+  const line1 = titleLine1;
+  const line1W = spacedWidth(serifBold, line1, titleSize, letterSpacing);
+  const startX = (width - line1W) / 2;
+  const xs = drawSpacedText(
+    page,
+    line1,
+    startX,
+    toY(top, titleSize),
+    titleSize,
+    serifBold,
+    navyDeep,
+    letterSpacing,
+  );
+  top += titleSize + 6;
+
+  const underE = xs[1] ?? startX;
+  const ofWord = titleLine2Left;
+  const attendanceWord = titleLine2Right;
+  const ofW = spacedWidth(serifBold, ofWord, titleSize, letterSpacing);
+  const gapAfterOf = letterSpacing * 2.5;
+  const ofX = underE - gapAfterOf - ofW;
+  drawSpacedText(
+    page,
+    ofWord,
+    ofX,
+    toY(top, titleSize),
+    titleSize,
+    serifBold,
+    navyDeep,
+    letterSpacing,
+  );
+  drawSpacedText(
+    page,
+    attendanceWord,
+    underE,
+    toY(top, titleSize),
+    titleSize,
+    serifBold,
+    navyDeep,
+    letterSpacing,
+  );
+
+  // Previous: y += 48 after title block return (second line baseline)
+  top += 48;
+
+  drawCenteredText(
+    page,
+    awardedToLabel,
+    width,
+    toY(top, 11),
+    11,
+    sans,
+    navy,
+    2.5,
+  );
+
+  top += 14;
   const learnerName = String(input.learnerName || '').trim() || 'Full Name';
-  // Learner name — Amithen (script); CJK keeps CertCJK
-  drawCentered(doc, learnerName, y, {
-    size: hasCjk(learnerName) ? 30 : 42,
-    color: COA.gold,
-    font: hasCjk(learnerName) ? 'cjk' : 'script',
-  });
+  const nameSize = hasCjk(learnerName) ? 30 : 40;
+  const nameFont = hasCjk(learnerName) ? sansBold : script;
+  drawCenteredText(page, learnerName, width, toY(top, nameSize), nameSize, nameFont, gold);
 
-  y += 62;
-  drawCentered(doc, 'for attending of the session', y, {
-    size: 11,
-    color: COA.lightBlue,
-    spacing: 1.6,
-    font: 'sans',
-  });
+  top += nameSize * 0.72 + 14;
+  drawCenteredText(
+    page,
+    sessionLabel,
+    width,
+    toY(top, 11),
+    11,
+    sans,
+    navy,
+    2.5,
+  );
 
-  y += 26;
+  top += 26;
   const programme =
     String(input.courseTitle || '').trim() ||
     'ISCA Sustainability Professional Certification (e-Learning Modules)';
-  fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
-  doc
-    .fontSize(13)
-    .fillColor(COA.navyDeep)
-    .text(programme, contentX, y, {
-      width: contentWidth,
-      align: 'center',
-      lineGap: 3,
-    });
-  y = doc.y + 14;
+  const programmeLines = wrapLines(programme, sansBold, 13, contentWidth);
+  for (const line of programmeLines) {
+    drawCenteredText(page, line, width, toY(top, 13), 13, sansBold, navyDeep);
+    top += 16;
+  }
+  // Previous: pull "on" up tight under programme (doc.y - 2)
+  top -= 2;
 
-  drawCentered(doc, 'on', y, {
-    size: 10,
-    color: COA.lightBlue,
-    spacing: 2.5,
-    font: 'sans',
-  });
+  drawCenteredText(page, 'on', width, toY(top, 10), 10, sans, navy, 5);
+  top += 16;
 
-  y += 20;
   const completedAt = formatCompletedDate(input.completedAt);
-  fontOrFallback(doc, 'CertSans', 'Helvetica');
-  doc
-    .fontSize(11)
-    .fillColor(COA.lightBlue)
-    .text(completedAt || '', contentX, y, {
-      width: contentWidth,
-      align: 'center',
-      lineBreak: false,
-    });
+  if (completedAt) {
+    drawCenteredText(page, completedAt, width, toY(top, 11), 11, sans, navy);
+  }
 
-  y += 34;
-  drawCentered(doc, 'Total CPE Hours and Pillar:', y, {
-    size: 11,
-    color: COA.midBlue,
-    spacing: 0.8,
-    font: 'sans',
-  });
+  top += 34;
+  drawCenteredText(
+    page,
+    cpeSectionLabel,
+    width,
+    toY(top, 11),
+    11,
+    sans,
+    navy,
+    0.8,
+  );
 
-  y += 18;
+  top += 18;
   const pillarRows =
     Array.isArray(input.pillarCpeHours) && input.pillarCpeHours.length > 0
       ? [...input.pillarCpeHours].sort((a, b) => a.pillarIndex - b.pillarIndex)
@@ -291,189 +523,74 @@ function drawCertificatePage(doc: PDFKit.PDFDocument, input: BuildCertificatePdf
           },
         ];
 
-  const cpeLines = pillarRows.map((pillar) => {
+  for (const pillar of pillarRows) {
     const hours = Math.max(0, Number(pillar.earnedCpeHours) || 0);
-    return `Pillar ${pillar.pillarIndex} - ${hours.toFixed(2)} Hours`;
-  });
-
-  fontOrFallback(doc, 'CertSans', 'Helvetica');
-  cpeLines.forEach((line) => {
-    doc
-      .fontSize(11)
-      .fillColor(COA.midBlue)
-      .text(line, contentX, y, {
-        width: contentWidth,
-        align: 'center',
-        lineBreak: false,
-      });
-    y += 15;
-  });
-
-  // Signature block — flows under content so page height can auto-fit
-  const signatoryName =
-    String(input.signatoryName || 'QUEK MU LIM').trim() || 'QUEK MU LIM';
-  const signatoryTitle =
-    String(input.signatoryTitle || 'CHIEF EXECUTIVE OFFICER').trim() ||
-    'CHIEF EXECUTIVE OFFICER';
-  const issuerName =
-    String(input.issuerName || 'ISCA ACADEMY PTE LTD').trim() || 'ISCA ACADEMY PTE LTD';
-
-  const sigY = y + 28;
-  const lineY = sigY + 40;
-  const nameY = lineY + 12;
-  const titleY = nameY + 18;
-  const issuerY = titleY + 16;
-  const certNoY = issuerY + 28;
-  const signaturePath = resolveSignaturePath();
-
-  if (signaturePath) {
-    try {
-      const sigW = 120;
-      const sigH = 34;
-      doc.image(signaturePath, (pageWidth - sigW) / 2, sigY, { fit: [sigW, sigH] });
-    } catch {
-      // skip
-    }
+    const line = `Pillar ${pillar.pillarIndex} - ${hours.toFixed(2)} Hours`;
+    drawCenteredText(page, line, width, toY(top, 11), 11, sans, navy);
+    top += 15;
   }
 
-  const lineW = 150;
-  doc
-    .moveTo((pageWidth - lineW) / 2, lineY)
-    .lineTo((pageWidth + lineW) / 2, lineY)
-    .strokeColor(COA.line)
-    .lineWidth(0.9)
-    .stroke();
+  await drawDynamicSignatoryFooter(pdf, page, width, height, input, sans);
 
-  fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
-  doc
-    .fontSize(12)
-    .fillColor(COA.navyDeep)
-    .text(signatoryName, contentX, nameY, {
-      width: contentWidth,
-      align: 'center',
-      lineBreak: false,
-    });
-
-  fontOrFallback(doc, 'CertSans', 'Helvetica');
-  doc
-    .fontSize(9)
-    .fillColor(COA.navy)
-    .text(signatoryTitle, contentX, titleY, {
-      width: contentWidth,
-      align: 'center',
-      lineBreak: false,
-    });
-  doc
-    .fontSize(9)
-    .fillColor(COA.navy)
-    .text(issuerName, contentX, issuerY, {
-      width: contentWidth,
-      align: 'center',
-      lineBreak: false,
-    });
-
-  const certNo = String(input.certificateNo || '').trim();
-  fontOrFallback(doc, 'CertSans', 'Helvetica');
-  doc
-    .fontSize(9)
-    .fillColor(COA.lightBlue)
-    .text(certNo ? `CERTIFICATE NO: ${certNo}` : 'CERTIFICATE NO:', contentX, certNoY, {
-      width: contentWidth,
-      align: 'center',
-      characterSpacing: 0.8,
-      lineBreak: false,
-    });
+  return pdf.save();
 }
 
-/** A4 width; height is measured from content so page 1 auto-fits. */
-const CERT_PAGE_WIDTH = 595.28;
-const CERT_PAGE_MIN_HEIGHT = 720;
-const CERT_PAGE_MAX_HEIGHT = 1200;
-
-/**
- * Measure certificate page height by running the same layout Y math (no output).
- */
-function measureCertificatePageHeight(input: BuildCertificatePdfInput): number {
-  const measure = new PDFDocument({
-    size: [CERT_PAGE_WIDTH, CERT_PAGE_MAX_HEIGHT],
-    margin: 36,
-    autoFirstPage: true,
-  });
-  registerCertificateFonts(measure);
-  registerCjkFont(measure);
-
-  const contentX = 70;
-  const contentWidth = CERT_PAGE_WIDTH - contentX * 2;
-
-  // Match drawCoaHeaderLockup return: top 40, logo ~38, +28
-  let y = Math.max(40 + 38, 40 + 1 + 4 * 8) + 28;
-  y += 6;
-  y += 28; // CERTIFICATE
-  y += 28; // OF ATTENDANCE
-  y += 36; // has been awarded to
-  y += 22; // name start
-  y += 62; // after name
-  y += 26; // after "for attending…"
-
-  const programme =
-    String(input.courseTitle || '').trim() ||
-    'ISCA Sustainability Professional Certification (e-Learning Modules)';
-  fontOrFallback(measure, 'CertSans-Bold', 'Helvetica-Bold');
-  measure.fontSize(13);
-  const programmeH = measure.heightOfString(programme, {
-    width: contentWidth,
-    lineGap: 3,
-  });
-  y += programmeH + 14;
-  y += 20; // on + date
-  y += 34; // CPE heading
-  y += 18;
-
-  const pillarCount =
-    Array.isArray(input.pillarCpeHours) && input.pillarCpeHours.length > 0
-      ? input.pillarCpeHours.length
-      : 1;
-  y += pillarCount * 15;
-
-  // Footer stack (sig → cert no) + bottom margin — same as drawCertificatePage
-  y += 28 + 40 + 12 + 18 + 16 + 28 + 48;
-
-  measure.on('data', () => undefined);
-  measure.end();
-
-  return Math.min(
-    CERT_PAGE_MAX_HEIGHT,
-    Math.max(CERT_PAGE_MIN_HEIGHT, Math.ceil(y)),
-  );
-}
-
-export async function buildCourseCertificatePdf(
+/** Transcript pages only — no blank auto-first page. */
+async function buildTranscriptPdfBuffer(
   input: BuildCertificatePdfInput,
-): Promise<{ filename: string; buffer: Buffer }> {
-  const pageHeight = measureCertificatePageHeight(input);
-  const certificatePageSize: [number, number] = [CERT_PAGE_WIDTH, pageHeight];
-  const doc = new PDFDocument({ size: certificatePageSize, margin: 36, autoFirstPage: true });
-  registerCertificateFonts(doc);
-  registerCjkFont(doc);
+  pageSize: { width: number; height: number },
+): Promise<Buffer | null> {
+  const hasRows = Array.isArray(input.transcript) && input.transcript.length > 0;
+  if (!hasRows) return null;
 
+  const doc = new PDFDocument({
+    size: [pageSize.width, pageSize.height],
+    margin: 50,
+    autoFirstPage: false,
+  });
+  registerCertificateFonts(doc);
   const chunks: Buffer[] = [];
 
   await new Promise<void>((resolve, reject) => {
     doc.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
     doc.on('end', () => resolve());
     doc.on('error', reject);
-
-    drawCertificatePage(doc, input);
-    drawTranscriptPage(doc, input);
+    drawTranscriptPage(doc, input, pageSize);
     doc.end();
   });
 
+  return Buffer.concat(chunks);
+}
+
+export async function buildCourseCertificatePdf(
+  input: BuildCertificatePdfInput,
+): Promise<{ filename: string; buffer: Buffer }> {
+  const stamped = await stampCertificateTemplate(input);
+  const out = await PdfLibDocument.load(stamped);
+  const certPage = out.getPages()[0];
+  const { width: certWidth, height: certHeight } = certPage.getSize();
+
+  try {
+    const transcriptBuf = await buildTranscriptPdfBuffer(input, {
+      width: certWidth,
+      height: certHeight,
+    });
+    if (transcriptBuf && transcriptBuf.length > 0) {
+      const transcriptPdf = await PdfLibDocument.load(transcriptBuf);
+      const pages = await out.copyPages(transcriptPdf, transcriptPdf.getPageIndices());
+      pages.forEach((p) => out.addPage(p));
+    }
+  } catch {
+    // transcript optional — certificate page still returned
+  }
+
+  const bytes = await out.save();
   const safeNo = String(input.certificateNo || 'certificate')
     .replace(/[^a-zA-Z0-9-_]/g, '-')
     .slice(0, 60);
 
   return {
     filename: `Certificate-${safeNo}.pdf`,
-    buffer: Buffer.concat(chunks),
+    buffer: Buffer.from(bytes),
   };
 }

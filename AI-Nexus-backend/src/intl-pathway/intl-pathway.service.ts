@@ -23,13 +23,30 @@ type LmsCandidate = {
   courseTitle: string;
   videoUrl: string;
   minutes: number | null;
+  courseId: string;
+  moduleId: string;
+  sectionId: string;
 };
+
+function normalizeUuid(value?: string | null): string | null {
+  const text = String(value || '').trim();
+  return text || null;
+}
 
 function normalizeTitle(value?: string | null): string {
   return String(value || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+function normalizeVideoUrlKey(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .replace(/\/+$/, '')
+    .split('?')[0]
+    .split('#')[0]
+    .toLowerCase();
 }
 
 function extractModuleCode(value?: string | null): string | null {
@@ -107,6 +124,9 @@ export class IntlPathwayService {
       pillar: String(dto.pillar || '').trim(),
       minutes: Number(dto.minutes) || 0,
       videoUrl: dto.videoUrl != null ? String(dto.videoUrl).trim() || null : null,
+      courseId: normalizeUuid(dto.courseId),
+      moduleId: normalizeUuid(dto.moduleId),
+      sectionId: normalizeUuid(dto.sectionId),
       bullets: Array.isArray(dto.bullets) ? dto.bullets : [],
       sortOrder: dto.sortOrder != null ? Number(dto.sortOrder) : 0,
       deleted: dto.deleted ?? false,
@@ -140,6 +160,9 @@ export class IntlPathwayService {
     if (dto.videoUrl !== undefined) {
       row.videoUrl = dto.videoUrl != null ? String(dto.videoUrl).trim() || null : null;
     }
+    if (dto.courseId !== undefined) row.courseId = normalizeUuid(dto.courseId);
+    if (dto.moduleId !== undefined) row.moduleId = normalizeUuid(dto.moduleId);
+    if (dto.sectionId !== undefined) row.sectionId = normalizeUuid(dto.sectionId);
     if (dto.bullets !== undefined) row.bullets = Array.isArray(dto.bullets) ? dto.bullets : [];
     if (dto.sortOrder !== undefined) row.sortOrder = Number(dto.sortOrder) || 0;
     if (dto.deleted !== undefined) row.deleted = !!dto.deleted;
@@ -242,10 +265,53 @@ export class IntlPathwayService {
   }
 
   /** Public planner payload: modules + roles. Admin videoUrl wins; LMS fills empty links by title. */
-  async getPlannerCatalog() {
-    const [modules, roles] = await Promise.all([this.getModulesPublic(), this.getRolesPublic()]);
+  async getPlannerCatalog(includeVideoUrls = false) {
+    // Sequential reads avoid pg "client already executing a query" on pooled connections.
+    const modules = await this.getModulesPublic();
+    const roles = await this.getRolesPublic();
     const enrichedModules = await this.enrichModulesWithLmsVideos(modules);
-    return { modules: enrichedModules, roles };
+    // Persist LMS course/module/section ids when we resolved them from the live tree.
+    const dirty = enrichedModules.filter((row, index) => {
+      const original = modules[index];
+      if (!original) return false;
+      return (
+        (!original.courseId && row.courseId) ||
+        (!original.moduleId && row.moduleId) ||
+        (!original.sectionId && row.sectionId) ||
+        (!original.videoUrl && row.videoUrl)
+      );
+    });
+    if (dirty.length) {
+      await this.moduleRepository.save(
+        dirty.map((row) => {
+          const entity = modules.find((m) => m.id === row.id) || row;
+          entity.courseId = row.courseId || entity.courseId || null;
+          entity.moduleId = row.moduleId || entity.moduleId || null;
+          entity.sectionId = row.sectionId || entity.sectionId || null;
+          if (!entity.videoUrl && row.videoUrl) entity.videoUrl = row.videoUrl;
+          return entity;
+        }),
+      );
+    }
+    return {
+      modules: this.sanitizePublicModules(enrichedModules, includeVideoUrls),
+      roles,
+    };
+  }
+
+  /** Guests get catalog metadata only — video URLs require an international login. */
+  sanitizePublicModules<T extends { videoUrl?: string | null }>(
+    modules: T[],
+    includeVideoUrls: boolean,
+  ) {
+    return modules.map((module) => {
+      const videoUrl = String(module.videoUrl || '').trim() || null;
+      return {
+        ...module,
+        hasVideo: Boolean(videoUrl),
+        videoUrl: includeVideoUrls ? videoUrl : null,
+      };
+    });
   }
 
   /**
@@ -433,6 +499,9 @@ export class IntlPathwayService {
             pillar,
             minutes: section.minutes && section.minutes > 0 ? section.minutes : 0,
             videoUrl: section.videoUrl,
+            courseId: course.courseId,
+            moduleId: mod.moduleId,
+            sectionId: section.sectionId,
             bullets: [],
             sortOrder: sortOrder++,
             deleted: false,
@@ -472,8 +541,15 @@ export class IntlPathwayService {
   }
 
   private async enrichModulesWithLmsVideos(modules: IntlPathwayModuleEntity[]) {
-    const needsVideo = modules.some((m) => !String(m.videoUrl || '').trim());
-    if (!needsVideo) {
+    // Always enrich missing LMS ids — each pathway code needs its own section (Fort-style).
+    const needsEnrichment = modules.some(
+      (m) =>
+        !String(m.videoUrl || '').trim() ||
+        !m.courseId ||
+        !m.moduleId ||
+        !m.sectionId,
+    );
+    if (!needsEnrichment) {
       return modules.map((m) => ({ ...m }));
     }
 
@@ -489,6 +565,7 @@ export class IntlPathwayService {
 
     const byCode: Record<string, LmsCandidate> = {};
     const byTitle: Record<string, LmsCandidate> = {};
+    const byVideoUrl: Record<string, LmsCandidate> = {};
 
     candidates.forEach((c) => {
       const code = extractModuleCode(c.title) || extractModuleCode(c.moduleTitle);
@@ -497,34 +574,65 @@ export class IntlPathwayService {
       const moduleKey = normalizeTitle(c.moduleTitle);
       if (titleKey && !byTitle[titleKey]) byTitle[titleKey] = c;
       if (moduleKey && !byTitle[moduleKey]) byTitle[moduleKey] = c;
+      const videoKey = normalizeVideoUrlKey(c.videoUrl);
+      if (videoKey && !byVideoUrl[videoKey]) byVideoUrl[videoKey] = c;
     });
+
+    // Never assign the same LMS section to two pathway modules (that made only "first" progress).
+    const usedSectionIds = new Set(
+      modules.filter((m) => m.sectionId).map((m) => String(m.sectionId)),
+    );
 
     return modules.map((module) => {
       const adminUrl = String(module.videoUrl || '').trim();
-      if (adminUrl) {
-        return { ...module, videoUrl: adminUrl };
-      }
-
-      const titleKey = normalizeTitle(module.title);
-      let matched: LmsCandidate | null = byCode[module.code] || byTitle[titleKey] || null;
-
-      if (!matched && titleKey.length >= 8) {
-        const fuzzyKey = Object.keys(byTitle).find(
-          (key) => key.length >= 8 && (key.includes(titleKey) || titleKey.includes(key))
+      // Already linked to an LMS section — still fill empty videoUrl from that section.
+      if (module.courseId && module.moduleId && module.sectionId) {
+        if (adminUrl) {
+          return { ...module, videoUrl: adminUrl };
+        }
+        const linked = candidates.find(
+          (c) => String(c.sectionId || '') === String(module.sectionId || ''),
         );
-        if (fuzzyKey) matched = byTitle[fuzzyKey];
-      }
-
-      if (matched?.videoUrl) {
+        const fromSection = String(linked?.videoUrl || '').trim();
         return {
           ...module,
-          videoUrl: matched.videoUrl,
-          minutes: matched.minutes && matched.minutes > 0 ? matched.minutes : module.minutes,
+          videoUrl: fromSection || null,
+          minutes:
+            linked?.minutes && linked.minutes > 0 ? linked.minutes : module.minutes,
         };
       }
 
-      // Prefer title match only — video comes from the selected course lesson title.
-      return { ...module, videoUrl: null };
+      const titleKey = normalizeTitle(module.title);
+      const tryMatch = (matched: LmsCandidate | null): LmsCandidate | null => {
+        if (!matched?.sectionId) return null;
+        const sid = String(matched.sectionId);
+        if (usedSectionIds.has(sid) && String(module.sectionId || '') !== sid) return null;
+        return matched;
+      };
+
+      let matched =
+        tryMatch(byCode[module.code] || null) ||
+        tryMatch(byTitle[titleKey] || null) ||
+        tryMatch(adminUrl ? byVideoUrl[normalizeVideoUrlKey(adminUrl)] || null : null);
+
+      // Exact-title only fallback — no fuzzy includes() (caused shared sectionIds).
+      if (!matched && titleKey) {
+        matched = tryMatch(byTitle[titleKey] || null);
+      }
+
+      if (!matched) {
+        return { ...module, videoUrl: adminUrl || null };
+      }
+
+      usedSectionIds.add(String(matched.sectionId));
+      return {
+        ...module,
+        videoUrl: adminUrl || matched.videoUrl || null,
+        minutes: matched.minutes && matched.minutes > 0 ? matched.minutes : module.minutes,
+        courseId: module.courseId || matched.courseId || null,
+        moduleId: module.moduleId || matched.moduleId || null,
+        sectionId: module.sectionId || matched.sectionId || null,
+      };
     });
   }
 
@@ -585,6 +693,9 @@ export class IntlPathwayService {
         minutes:
           parseDurationToMinutes(section.durationTime) ||
           parseDurationToMinutes(section.watchtime),
+        courseId: mod.courseId,
+        moduleId: mod.id,
+        sectionId: section.id,
       });
     }
 

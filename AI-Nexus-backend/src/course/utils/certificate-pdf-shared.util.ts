@@ -35,11 +35,119 @@ export type BuildCertificatePdfInput = {
   /** Programme pillar CPE breakdown (Pillar 1 / 2 / 3). */
   pillarCpeHours?: CertificatePdfPillarCpe[];
   logoUrl?: string | null;
+  /** Header logos left → center → right (img2, img1, img3). */
+  logoUrls?: (string | null | undefined)[];
+  signatureUrl?: string | null;
   transcript?: CertificatePdfTranscriptModule[];
+  titleLine1?: string;
+  titleLine2Left?: string;
+  titleLine2Right?: string;
+  awardedToLabel?: string;
+  sessionLabel?: string;
+  cpeSectionLabel?: string;
   issuerName?: string;
   signatoryName?: string;
   signatoryTitle?: string;
 };
+
+export const CERTIFICATE_TEMPLATE_DEFAULTS = {
+  titleLine1: 'CERTIFICATE',
+  titleLine2Left: 'OF',
+  titleLine2Right: 'ATTENDANCE',
+  awardedToLabel: 'has been awarded to',
+  sessionLabel: 'for attending of the session',
+  cpeSectionLabel: 'Total CPE Hours and Pillar:',
+  signatoryName: 'Sign off: Fann Kor',
+  signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
+  issuerName: 'ISCA ACADEMY PTE LTD',
+} as const;
+
+export type CertificateTemplatePdfSettings = Partial<
+  Pick<
+    BuildCertificatePdfInput,
+    | 'titleLine1'
+    | 'titleLine2Left'
+    | 'titleLine2Right'
+    | 'awardedToLabel'
+    | 'sessionLabel'
+    | 'cpeSectionLabel'
+    | 'signatoryName'
+    | 'signatoryTitle'
+    | 'issuerName'
+    | 'logoUrls'
+    | 'signatureUrl'
+  >
+>;
+
+export function resolveUploadAssetPath(url?: string | null): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('/uploads/')) {
+    const path = join(process.cwd(), 'public', trimmed);
+    return existsSync(path) ? path : null;
+  }
+  return null;
+}
+
+function pickTemplateText(
+  value: string | null | undefined,
+  fallback: string,
+): string {
+  const cleaned = String(value ?? '').trim();
+  return cleaned || fallback;
+}
+
+export function mergeCertificateTemplateIntoInput(
+  input: BuildCertificatePdfInput,
+  template?: CertificateTemplatePdfSettings | null,
+): BuildCertificatePdfInput {
+  const t = template || {};
+  const logoUrls =
+    Array.isArray(input.logoUrls) && input.logoUrls.some((u) => String(u || '').trim())
+      ? input.logoUrls
+      : Array.isArray(t.logoUrls)
+        ? t.logoUrls
+        : undefined;
+  return {
+    ...input,
+    titleLine1: pickTemplateText(input.titleLine1 ?? t.titleLine1, CERTIFICATE_TEMPLATE_DEFAULTS.titleLine1),
+    titleLine2Left: pickTemplateText(
+      input.titleLine2Left ?? t.titleLine2Left,
+      CERTIFICATE_TEMPLATE_DEFAULTS.titleLine2Left,
+    ),
+    titleLine2Right: pickTemplateText(
+      input.titleLine2Right ?? t.titleLine2Right,
+      CERTIFICATE_TEMPLATE_DEFAULTS.titleLine2Right,
+    ),
+    awardedToLabel: pickTemplateText(
+      input.awardedToLabel ?? t.awardedToLabel,
+      CERTIFICATE_TEMPLATE_DEFAULTS.awardedToLabel,
+    ),
+    sessionLabel: pickTemplateText(
+      input.sessionLabel ?? t.sessionLabel,
+      CERTIFICATE_TEMPLATE_DEFAULTS.sessionLabel,
+    ),
+    cpeSectionLabel: pickTemplateText(
+      input.cpeSectionLabel ?? t.cpeSectionLabel,
+      CERTIFICATE_TEMPLATE_DEFAULTS.cpeSectionLabel,
+    ),
+    signatoryName: pickTemplateText(
+      input.signatoryName ?? t.signatoryName,
+      CERTIFICATE_TEMPLATE_DEFAULTS.signatoryName,
+    ),
+    signatoryTitle: pickTemplateText(
+      input.signatoryTitle ?? t.signatoryTitle,
+      CERTIFICATE_TEMPLATE_DEFAULTS.signatoryTitle,
+    ),
+    issuerName: pickTemplateText(input.issuerName ?? t.issuerName, CERTIFICATE_TEMPLATE_DEFAULTS.issuerName),
+    logoUrls,
+    signatureUrl:
+      input.signatureUrl != null && String(input.signatureUrl).trim()
+        ? input.signatureUrl
+        : t.signatureUrl ?? input.signatureUrl ?? null,
+  };
+}
 
 export const CERT_COLORS = {
   border: '#1A365D',
@@ -110,6 +218,7 @@ export function resolveFontPath(fileName: string): string | null {
   // Prefer module-relative paths so Nest `dist/` and different CWDs still resolve.
   const candidates = [
     join(__dirname, '..', '..', '..', 'assets', 'fonts', fileName),
+    join(__dirname, '..', '..', '..', '..', 'assets', 'fonts', fileName),
     join(process.cwd(), 'assets', 'fonts', fileName),
     join(process.cwd(), 'public', 'certificate', 'fonts', fileName),
   ];
@@ -237,6 +346,8 @@ export function registerCertificateFonts(doc: PDFKit.PDFDocument) {
   tryRegisterFont(doc, 'CertSans', 'OpenSans-Regular.ttf');
   tryRegisterFont(doc, 'CertSans-Bold', 'OpenSans-Bold.ttf');
   tryRegisterFont(doc, 'CertSans-Semi', 'OpenSans-Semibold.ttf');
+  // Vertical "Certificate" — Pinyon Script (bundled assets/fonts, SIL OFL)
+  tryRegisterFont(doc, 'CertVerticalScript', 'PinyonScript-Regular.ttf');
 }
 
 export function fontOrFallback(

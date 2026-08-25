@@ -77,8 +77,12 @@ export interface SalesforceNexusUserInfo {
   paid_amount?: number;
   idType?: string;
   NRIC_Number?: string;
+  /** Salesforce userinfonexus.role — "individual" / "corporate". */
+  role?: string;
   [key: string]: unknown;
 }
+
+type SalesforceSessionRole = 'individual' | 'corporate';
 
 export interface OAuthTokens {
   access_token: string;
@@ -1486,7 +1490,7 @@ export class OAuthAuthService {
   }
 
   /**
-   * SCAQ membership verify: fetch Salesforce nexus info first.
+   * SCAQ membership verify: fetch Salesforce nexus info first (Individual only).
    * Non-candidates get profile-only (no DB write); confirmed candidates proceed to full login.
    */
   async resolveOAuthCallback(
@@ -1504,41 +1508,46 @@ export class OAuthAuthService {
       idpUserInfo.given_name || idpUserInfo.first_name || (typeof idpUserInfo.name === 'string' ? idpUserInfo.name : '') || '';
     const idpLastName = idpUserInfo.family_name || idpUserInfo.last_name || '';
 
-    const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
-    const isSCAQCandidate =
-      typeof nexusInfo?.isSCAQCandidate === 'boolean' ? nexusInfo.isSCAQCandidate : null;
-    const isAssociateMember =
-      typeof nexusInfo?.isAssociateMember === 'boolean' ? nexusInfo.isAssociateMember : null;
+    const idpRole = this.readSalesforceSessionRole(idpUserInfo as Record<string, unknown>);
+    let nexusInfo: SalesforceNexusUserInfo | null = null;
 
-    if (
-      options.scaqVerify
-      && isSCAQCandidate !== true
-      && !this.isSalesforceMemberAccountType(nexusInfo?.accountType)
-    ) {
-      console.log('[SSO Login] SCAQ verify-only: not a confirmed candidate — skipping DB persist', {
-        email,
-        isSCAQCandidate,
-        isAssociateMember,
-        accountType: nexusInfo?.accountType,
-      });
-      return {
-        mode: 'profile-only',
-        profile: {
+    if (options.scaqVerify && idpRole !== 'corporate') {
+      nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+      const isSCAQCandidate =
+        typeof nexusInfo?.isSCAQCandidate === 'boolean' ? nexusInfo.isSCAQCandidate : null;
+      const isAssociateMember =
+        typeof nexusInfo?.isAssociateMember === 'boolean' ? nexusInfo.isAssociateMember : null;
+
+      if (
+        isSCAQCandidate !== true
+        && !this.isSalesforceMemberAccountType(nexusInfo?.accountType)
+      ) {
+        console.log('[SSO Login] SCAQ verify-only: not a confirmed candidate — skipping DB persist', {
           email,
-          firstName: nexusInfo?.firstName || idpFirstName || '',
-          lastName: nexusInfo?.lastName || idpLastName || '',
           isSCAQCandidate,
           isAssociateMember,
-          salesforceAccountId: nexusInfo?.accountID || '',
-          salesforceAccountType: nexusInfo?.accountType || '',
-          salesforceMemberClass: nexusInfo?.memberClass || '',
-          salesforceMembershipStatus: String(nexusInfo?.membershipStatus || '').trim(),
-        },
-      };
+          accountType: nexusInfo?.accountType,
+        });
+        return {
+          mode: 'profile-only',
+          profile: {
+            email,
+            firstName: nexusInfo?.firstName || idpFirstName || '',
+            lastName: nexusInfo?.lastName || idpLastName || '',
+            isSCAQCandidate,
+            isAssociateMember,
+            salesforceAccountId: nexusInfo?.accountID || '',
+            salesforceAccountType: nexusInfo?.accountType || '',
+            salesforceMemberClass: nexusInfo?.memberClass || '',
+            salesforceMembershipStatus: String(nexusInfo?.membershipStatus || '').trim(),
+          },
+        };
+      }
     }
 
     const result = await this.processOAuthAuthentication(idpUserInfo, idpAccessToken, syncFn, {
       loginAsCorporate: Boolean(options.loginAsCorporate),
+      nexusInfo,
     });
     return { mode: 'full-login', result };
   }
@@ -3077,8 +3086,41 @@ export class OAuthAuthService {
   isSalesforceCorporateRole(
     info: Record<string, unknown> | null | undefined,
   ): boolean {
-    if (!info || typeof info !== 'object') return false;
-    return String(info.role || '').trim().toLowerCase() === 'corporate';
+    return this.readSalesforceSessionRole(info) === 'corporate';
+  }
+
+  /**
+   * Individual vs Corporate from the Salesforce `role` field only.
+   * Does not infer role from which Apex API succeeded or 403'd.
+   */
+  normalizeSalesforceSessionRole(raw: unknown): SalesforceSessionRole | null {
+    const value = String(raw || '').trim().toLowerCase();
+    if (!value) return null;
+    if (value === 'individual' || value === 'user' || value === 'learner') {
+      return 'individual';
+    }
+    if (
+      value === 'corporate'
+      || value === 'ato'
+      || value === 'corporate / ato'
+      || value === 'corporate/ato'
+      || value === 'organisation'
+      || value === 'organization'
+    ) {
+      return 'corporate';
+    }
+    return null;
+  }
+
+  readSalesforceSessionRole(
+    info: Record<string, unknown> | null | undefined,
+  ): SalesforceSessionRole | null {
+    if (!info || typeof info !== 'object') return null;
+    return (
+      this.normalizeSalesforceSessionRole(info.role)
+      || this.normalizeSalesforceSessionRole(info.userType)
+      || this.normalizeSalesforceSessionRole(info.user_role)
+    );
   }
 
   isCorporateSalesforceUserInfo(
@@ -3086,12 +3128,88 @@ export class OAuthAuthService {
   ): info is Record<string, unknown> {
     if (!info || typeof info !== 'object') return false;
     if (info.success === false || info.success === 'false') return false;
-    if (this.isSalesforceCorporateRole(info)) return true;
+    const sessionRole = this.readSalesforceSessionRole(info);
+    if (sessionRole === 'individual') return false;
+    if (sessionRole === 'corporate') return true;
     const companyCode = String(info.companyCode || '').trim();
     const accountId = String(info.accountId || '').trim();
     const contactId = String(info.contactId || '').trim();
     const uenNumber = String(info.uenNumber || '').trim();
     return Boolean(companyCode || accountId || contactId || uenNumber);
+  }
+
+  /**
+   * After OAuth token + /userinfo: role is source of truth.
+   * Individual → userinfonexus only. Corporate → userinfoforcorporate only.
+   */
+  private async loadRoleScopedSalesforceUserInfo(
+    idpUserInfo: IdPUserInfo,
+    idpAccessToken: string,
+    options?: {
+      loginAsCorporate?: boolean;
+      nexusInfo?: SalesforceNexusUserInfo | null;
+      corporateInfo?: Record<string, unknown> | null;
+    },
+  ): Promise<{
+    sessionRole: SalesforceSessionRole | null;
+    nexusInfo: SalesforceNexusUserInfo | null;
+    corporateInfo: Record<string, unknown> | null;
+  }> {
+    let nexusInfo = options?.nexusInfo ?? null;
+    let corporateInfo = options?.corporateInfo ?? null;
+    const loginAsCorporate = Boolean(options?.loginAsCorporate);
+
+    // OAuth /userinfo has no Individual vs Corporate role — Apex `role` is the source of truth.
+    let sessionRole = this.readSalesforceSessionRole(idpUserInfo as Record<string, unknown>);
+    if (sessionRole) {
+      console.log('[SSO Login] Role from OAuth userinfo:', sessionRole);
+    } else {
+      console.log('[SSO Login] OAuth userinfo has no role — using Apex userinfo role');
+    }
+
+    if (!sessionRole && !nexusInfo) {
+      nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+      sessionRole = this.readSalesforceSessionRole(nexusInfo);
+    }
+    if (!sessionRole && !corporateInfo) {
+      corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+      sessionRole = this.readSalesforceSessionRole(corporateInfo);
+    }
+    if (!sessionRole) {
+      sessionRole =
+        this.readSalesforceSessionRole(nexusInfo)
+        || this.readSalesforceSessionRole(corporateInfo);
+    }
+
+    console.log('[SSO Login] Salesforce session role (source of truth):', sessionRole);
+
+    if (sessionRole === 'individual') {
+      if (!nexusInfo) {
+        nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+      }
+      corporateInfo = null;
+    } else if (sessionRole === 'corporate') {
+      if (!corporateInfo) {
+        corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+      }
+      nexusInfo = null;
+    } else if (loginAsCorporate) {
+      if (!corporateInfo) {
+        corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+      }
+      if (!this.isCorporateSalesforceUserInfo(corporateInfo) && !nexusInfo) {
+        nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+      }
+    } else {
+      if (!nexusInfo) {
+        nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
+      }
+      if (!corporateInfo) {
+        corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
+      }
+    }
+
+    return { sessionRole, nexusInfo, corporateInfo };
   }
 
   /** user.companyCode comes only from Salesforce companyCode (not UEN / accountId). */
@@ -4379,12 +4497,6 @@ export class OAuthAuthService {
       return { useDeferredAuth: false, needsPaidSignup: false, citizenshipGap: false };
     }
 
-    const corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
-    if (this.isCorporateSalesforceUserInfo(corporateInfo)) {
-      console.log('[SSO Login] Corporate userinfo found — granting direct platform login.');
-      return { useDeferredAuth: false, needsPaidSignup: false, citizenshipGap: false };
-    }
-
     const nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
 
     if (nexusInfo?.Is_paid === true) {
@@ -4787,7 +4899,7 @@ export class OAuthAuthService {
     }
 
     if (email) {
-      const byEmail = await this.userRepository.findOne({ where: { email, role } });
+      const byEmail = await this.findLocalUserByEmailAndRole(email, role);
       if (byEmail) {
         return { user: byEmail, matchedBy: 'email' };
       }
@@ -4883,7 +4995,11 @@ export class OAuthAuthService {
     idpUserInfo: IdPUserInfo,
     idpAccessToken: string,
     syncFn?: (userId: string) => Promise<unknown>,
-    options?: { loginAsCorporate?: boolean },
+    options?: {
+      loginAsCorporate?: boolean;
+      nexusInfo?: SalesforceNexusUserInfo | null;
+      corporateInfo?: Record<string, unknown> | null;
+    },
   ): Promise<ProcessOAuthResult> {
     console.log('[SSO Login] Raw IdP userinfo received:', idpUserInfo);
     console.log('[SSO Login] IdP access token (masked):', this.maskToken(idpAccessToken));
@@ -4899,22 +5015,15 @@ export class OAuthAuthService {
 
     const loginAsCorporate = Boolean(options?.loginAsCorporate);
 
-    // Corporate portal: use userinfoforcorporate only. Corporate IdP users typically
-    // have no access to UserInfoNexusCtrl (403) — skip that call to avoid noisy failures.
-    // Individual SSO: prefer userinfonexus; still probe corporate for dual-role accounts.
-    let nexusInfo: SalesforceNexusUserInfo | null = null;
-    let corporateInfo: Record<string, unknown> | null = null;
-
-    if (loginAsCorporate) {
-      corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
-      if (!this.isCorporateSalesforceUserInfo(corporateInfo)) {
-        // Not a corporate SF profile — try nexus for staff-learner / individual fallback.
-        nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
-      }
-    } else {
-      nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
-      corporateInfo = await this.fetchSalesforceCorporateUserInfo(idpAccessToken);
-    }
+    let {
+      sessionRole,
+      nexusInfo,
+      corporateInfo,
+    } = await this.loadRoleScopedSalesforceUserInfo(idpUserInfo, idpAccessToken, {
+      loginAsCorporate,
+      nexusInfo: options?.nexusInfo ?? null,
+      corporateInfo: options?.corporateInfo ?? null,
+    });
 
     const hasCorporateInfo = this.isCorporateSalesforceUserInfo(corporateInfo);
 
@@ -4927,15 +5036,18 @@ export class OAuthAuthService {
       : '';
     const sfSaysCorporateRole = this.isSalesforceCorporateRole(corporateInfo);
 
-    // Prefer Corporate when:
-    // - Org Portal SSO (loginAsCorporate / returnTo=/corporate), or
-    // - Salesforce userinfoforcorporate.role is "corporate" (any casing), or
-    // - Corporate userinfo exists and there is no individual nexus username
-    // Local DB always stores UserRole.Corporate ("Corporate").
+    // Salesforce `role` is the source of truth. loginAsCorporate is fallback only
+    // when Apex/OAuth did not return Individual vs Corporate.
     const preferCorporateLogin =
-      loginAsCorporate
-      || sfSaysCorporateRole
-      || (hasCorporateInfo && !nexusUsername);
+      sessionRole === 'individual'
+        ? false
+        : sessionRole === 'corporate'
+          ? true
+          : (
+              loginAsCorporate
+              || sfSaysCorporateRole
+              || (hasCorporateInfo && !nexusUsername)
+            );
 
     let targetRole: UserRole = preferCorporateLogin ? UserRole.Corporate : UserRole.User;
     if (preferCorporateLogin) {
@@ -4956,8 +5068,9 @@ export class OAuthAuthService {
     }
 
     // Corporate portal SSO sets loginAsCorporate, but Salesforce IdP also allows choosing an
-    // Individual / ISCA account. If corporate profile is missing, fall back to Individual.
-    if (targetRole === UserRole.Corporate && !corporateUsername) {
+    // Individual / ISCA account. If corporate profile is missing, fall back to Individual
+    // unless Salesforce role explicitly says corporate.
+    if (targetRole === UserRole.Corporate && !corporateUsername && sessionRole !== 'corporate') {
       if (!nexusInfo) {
         nexusInfo = await this.fetchSalesforceNexusUserInfo(idpAccessToken);
       }
@@ -5017,6 +5130,12 @@ export class OAuthAuthService {
         salesforceUsername: corporateUsername,
         role: UserRole.Corporate,
       });
+      if (!resolved.user && email) {
+        const byEmail = await this.findLocalUserByEmailAndRole(email, UserRole.Corporate);
+        if (byEmail) {
+          resolved = { user: byEmail, matchedBy: 'email' };
+        }
+      }
     } else {
       resolved = await this.resolveLocalUserForSsoLogin({
         email,
@@ -5038,6 +5157,7 @@ export class OAuthAuthService {
       salesforceAccountId: salesforceAccountId || null,
       targetRole,
       preferCorporateLogin,
+      sessionRole,
       sfSaysCorporateRole,
       loginAsCorporate: Boolean(options?.loginAsCorporate),
       matchedBy: resolved.matchedBy,
@@ -5330,10 +5450,19 @@ export class OAuthAuthService {
     return username;
   }
 
-  /**
-   * Use Salesforce username as the local DB username.
-   * Throws if that username is already taken by another account.
-   */
+  private async findLocalUserByEmailAndRole(
+    email: string,
+    role: UserRole,
+  ): Promise<UserEntity | null> {
+    const normalized = normalizeEmail(email);
+    if (!normalized) return null;
+    return this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.email) = LOWER(:email)', { email: normalized })
+      .andWhere('user.role = :role', { role })
+      .getOne();
+  }
+
   private async resolveLocalUsernameFromSalesforce(salesforceUsername: string): Promise<string> {
     const candidate = String(salesforceUsername || '').trim();
     if (!candidate) {
@@ -5344,14 +5473,16 @@ export class OAuthAuthService {
       .createQueryBuilder('user')
       .where('LOWER(user.username) = LOWER(:username)', { username: candidate })
       .getOne();
-    if (existing) {
-      throw new ConflictException('Username already exists.');
+    if (!existing) {
+      return candidate;
     }
 
-    return candidate;
+    // Username is globally unique (User + Corporate). Keep SSO login working when
+    // the other role already owns this Salesforce username.
+    return this.generateUniqueUsername(candidate, '', '');
   }
 
-  /** Sync local username to Salesforce username; error if already taken by another user. */
+  /** Sync local username to Salesforce username when it is not already taken. */
   private async applySalesforceUsernameAsLocalUsername(
     user: UserEntity,
     salesforceUsername: string,
@@ -5370,7 +5501,14 @@ export class OAuthAuthService {
       .where('LOWER(user.username) = LOWER(:username)', { username: next })
       .getOne();
     if (owner && owner.id !== user.id) {
-      throw new ConflictException('Username already exists.');
+      console.warn('[SSO Login] Salesforce username already used as local username — keeping existing username:', {
+        userId: user.id,
+        currentUsername: current || null,
+        salesforceUsername: next,
+        ownerUserId: owner.id,
+        ownerRole: owner.role,
+      });
+      return;
     }
 
     console.log('[SSO Login] Syncing local username to Salesforce username:', {
