@@ -180,6 +180,39 @@ export async function endEservicesSessionAfterBlockedLogin(socialAccessToken = '
   markForceIdpLogin();
 }
 
+/**
+ * Failed SSO error screen — user clicked "Go to sign in page".
+ * Revoke eServices token + platform session so the next SSO is a fresh login
+ * (Individual vs Corporate / ATO radios), then flag logout.jsp on next start.
+ * @param {string} [socialAccessToken]
+ */
+export async function expireEservicesSessionOnFailedSignIn(socialAccessToken = '') {
+  const token = String(socialAccessToken || '').trim();
+  const payload = token ? { socialAccessToken: token } : buildLogoutPayload();
+
+  try {
+    await axios.post('/auth/oauth/end-eservices-session', payload, {
+      skipAuthRefresh: true,
+      skipApiLoading: true,
+    });
+  } catch {
+    // Token may already be invalid after a failed callback.
+  }
+
+  try {
+    await axios.post('/auth/logout', payload, {
+      skipAuthRefresh: true,
+      skipApiLoading: true,
+    });
+  } catch {
+    // No platform session is expected when SSO never completed.
+  }
+
+  await clearAuthSession();
+  clearClientSalesforceSessions();
+  markForceIdpLogin();
+}
+
 function shouldAttemptIdpBrowserLogout(cachedUser) {
   const authProvider = String(cachedUser?.authProvider || '').toUpperCase();
   if (authProvider === 'OAUTH') return true;
