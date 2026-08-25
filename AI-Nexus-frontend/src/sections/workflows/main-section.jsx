@@ -8,7 +8,7 @@ import Typography from '@mui/material/Typography';
 
 import { MyWorkflows } from './my-workflows';
 import { Skills } from './skills';
-import { Templates } from './templates';
+// import { Templates } from './templates';
 import { Newsletter } from './newsletter';
 import { PROMPT_PROVIDER_IDS } from './data/prompt-providers';
 import { AI_PLAYBOOKS_PROMPTS_TITLE } from './ai-playbooks-labels';
@@ -17,12 +17,13 @@ import { WorkflowMainTabIcon } from './workflow-main-tab-icon';
 // ----------------------------------------------------------------------
 
 const WORKFLOW_MAIN_TABS = [
-  {
-    id: 'templates',
-    label: 'Templates',
-    icon: 'solar:widget-5-bold-duotone',
-    imageSrc: null,
-  },
+  // Templates tab temporarily hidden
+  // {
+  //   id: 'templates',
+  //   label: 'Templates',
+  //   icon: 'solar:widget-5-bold-duotone',
+  //   imageSrc: null,
+  // },
   {
     id: 'resources',
     label: AI_PLAYBOOKS_PROMPTS_TITLE,
@@ -50,9 +51,7 @@ export function WorkflowMainSection() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromQuery = searchParams.get('tab');
   const resolveTab = (tab) =>
-    tab === 'templates' || tab === 'tools' || tab === 'resources' || tab === 'newsletter'
-      ? tab
-      : 'templates';
+    tab === 'tools' || tab === 'resources' || tab === 'newsletter' ? tab : 'resources';
   const initialTab = resolveTab(tabFromQuery);
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -201,7 +200,8 @@ export function WorkflowMainSection() {
       </Box>
 
       <Box>
-        {activeTab === 'templates' && <Templates />}
+        {/* Templates tab temporarily hidden */}
+        {/* {activeTab === 'templates' && <Templates />} */}
         {activeTab === 'resources' && (
           <>
             <MyWorkflows />
