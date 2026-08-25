@@ -81,8 +81,17 @@ export class UserService {
         return username.trim().toLowerCase();
     }
 
-    /** Company display name from Salesforce corporate userinfo (not a DB column). */
+    /** Company display name: prefer last admin/profile edit, then cached Salesforce corporate userinfo. */
     private resolveCorporateCompanyName(user: UserEntity): string {
+        const snapshot =
+            user.eligibilitySnapshot && typeof user.eligibilitySnapshot === 'object'
+                ? (user.eligibilitySnapshot as Record<string, unknown>)
+                : {};
+        for (const key of ['companyName', 'company'] as const) {
+            const fromSnapshot = String(snapshot[key] || '').trim();
+            if (fromSnapshot) return fromSnapshot;
+        }
+
         const raw = user.salesforceUserInfoRaw;
         if (raw && typeof raw === 'object') {
             const corporate =
@@ -569,6 +578,28 @@ export class UserService {
             const company = trimOrEmpty(updateUserDto.company);
             snapshotPatch.company = company;
             snapshotPatch.companyName = company;
+
+            // Keep cached Salesforce corporate display name in sync so list/details
+            // do not keep showing the old accountName after a local edit.
+            const existingRaw =
+                user.salesforceUserInfoRaw && typeof user.salesforceUserInfoRaw === 'object'
+                    ? (user.salesforceUserInfoRaw as Record<string, unknown>)
+                    : {};
+            const existingCorporate =
+                existingRaw.corporate && typeof existingRaw.corporate === 'object'
+                    ? (existingRaw.corporate as Record<string, unknown>)
+                    : {};
+            user.salesforceUserInfoRaw = {
+                ...existingRaw,
+                company,
+                companyName: company,
+                corporate: {
+                    ...existingCorporate,
+                    accountName: company,
+                    companyName: company,
+                    name: company,
+                },
+            };
         }
         if (updateUserDto.department !== undefined) {
             snapshotPatch.department = trimOrEmpty(updateUserDto.department);
@@ -632,7 +663,7 @@ export class UserService {
 
         return {
             message: 'User updated successfully',
-            user: user,
+            user: this.withCompanyName(user),
         };
     }
 
