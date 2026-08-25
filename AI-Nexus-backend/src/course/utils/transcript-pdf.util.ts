@@ -13,10 +13,13 @@ const PROGRAMME_SUBTITLE =
   'A programme under the GovernWell Series by the Charity Council of Singapore';
 
 /**
- * Transcript letterhead — same triple logo lockup as certificate page.
+ * Transcript letterhead — same center logo as certificate page.
  */
-function drawTranscriptHeader(doc: PDFKit.PDFDocument): number {
-  return drawTripleLogoHeader(doc, 42, 36);
+function drawTranscriptHeader(
+  doc: PDFKit.PDFDocument,
+  logoUrls?: (string | null | undefined)[],
+): number {
+  return drawTripleLogoHeader(doc, 42, 36, logoUrls);
 }
 
 /** Fixed sample title + programme subtitle (Crimson Pro / Open Sans). */
@@ -123,7 +126,7 @@ export function drawTranscriptPage(
 
   doc.addPage(pageSpec);
 
-  let y = drawTranscriptHeader(doc);
+  let y = drawTranscriptHeader(doc, input.logoUrls);
   y = drawProgrammeTitleBlock(doc, y, contentWidth, margin);
 
   const cols = {

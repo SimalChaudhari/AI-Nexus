@@ -16,7 +16,7 @@ import { Upload } from 'src/components/upload';
 import { Iconify } from 'src/components/iconify';
 import { appSettingsService } from 'src/services/app-settings.service';
 
-const LOGO_LABELS = ['Left logo', 'Centre logo', 'Right logo'];
+const CENTER_LOGO_INDEX = 1;
 
 export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS = {
   titleLine1: 'CERTIFICATE',
@@ -24,7 +24,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS = {
   titleLine2Right: 'ATTENDANCE',
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
-  cpeSectionLabel: 'Total CPE Hours and Pillar:',
+  cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   logoUrls: ['', '', ''],
@@ -51,7 +51,10 @@ function normalizeSettings(data) {
     titleLine2Right: source.titleLine2Right ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right,
     awardedToLabel: source.awardedToLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.awardedToLabel,
     sessionLabel: source.sessionLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.sessionLabel,
-    cpeSectionLabel: source.cpeSectionLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.cpeSectionLabel,
+    cpeSectionLabel:
+      source.cpeSectionLabel && source.cpeSectionLabel !== 'Total CPE Hours and Pillar:'
+        ? source.cpeSectionLabel
+        : DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.cpeSectionLabel,
     signatoryTitle: source.signatoryTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryTitle,
     issuerName: source.issuerName ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.issuerName,
     logoUrls,
@@ -63,8 +66,8 @@ export function CertificateTemplateSettingsCard() {
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS }));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [logoFiles, setLogoFiles] = useState([null, null, null]);
-  const [logoUploadingIndex, setLogoUploadingIndex] = useState(null);
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoUploading, setLogoUploading] = useState(false);
   const [signatureFile, setSignatureFile] = useState(null);
   const [signatureSubmitting, setSignatureSubmitting] = useState(false);
 
@@ -73,7 +76,7 @@ export function CertificateTemplateSettingsCard() {
     try {
       const data = await appSettingsService.getCertificateTemplateSettings();
       setSettings(normalizeSettings(data));
-      setLogoFiles([null, null, null]);
+      setLogoFile(null);
       setSignatureFile(null);
     } catch (error) {
       toast.error(error?.message || 'Failed to load certificate template settings');
@@ -121,51 +124,38 @@ export function CertificateTemplateSettingsCard() {
     }));
   };
 
-  const handleDropLogo = (index, files) => {
+  const handleDropLogo = (files) => {
     const file = files?.[0];
     if (!file) return;
-    setLogoFiles((prev) => {
-      const next = [...prev];
-      next[index] = file;
-      return next;
-    });
+    setLogoFile(file);
   };
 
-  const handleUploadLogo = async (index) => {
-    const file = logoFiles[index];
-    if (!file) return;
-    setLogoUploadingIndex(index);
+  const handleUploadLogo = async () => {
+    if (!logoFile) return;
+    setLogoUploading(true);
     try {
-      const result = await appSettingsService.uploadCertificateTemplateLogo(index, file);
+      const result = await appSettingsService.uploadCertificateTemplateLogo(CENTER_LOGO_INDEX, logoFile);
       setSettings(normalizeSettings(result?.certificateTemplateSettings || result));
-      setLogoFiles((prev) => {
-        const next = [...prev];
-        next[index] = null;
-        return next;
-      });
-      toast.success(`${LOGO_LABELS[index]} uploaded`);
+      setLogoFile(null);
+      toast.success('Centre logo uploaded');
     } catch (error) {
       toast.error(error?.message || 'Failed to upload logo');
     } finally {
-      setLogoUploadingIndex(null);
+      setLogoUploading(false);
     }
   };
 
-  const handleRemoveLogo = async (index) => {
-    setLogoUploadingIndex(index);
+  const handleRemoveLogo = async () => {
+    setLogoUploading(true);
     try {
-      const result = await appSettingsService.removeCertificateTemplateLogo(index);
+      const result = await appSettingsService.removeCertificateTemplateLogo(CENTER_LOGO_INDEX);
       setSettings(normalizeSettings(result?.certificateTemplateSettings || result));
-      setLogoFiles((prev) => {
-        const next = [...prev];
-        next[index] = null;
-        return next;
-      });
-      toast.success(`${LOGO_LABELS[index]} removed`);
+      setLogoFile(null);
+      toast.success('Centre logo removed');
     } catch (error) {
       toast.error(error?.message || 'Failed to remove logo');
     } finally {
-      setLogoUploadingIndex(null);
+      setLogoUploading(false);
     }
   };
 
@@ -234,7 +224,7 @@ export function CertificateTemplateSettingsCard() {
       {
         key: 'cpeSectionLabel',
         label: 'CPE section heading',
-        helperText: 'Heading above pillar hour lines (pillar names stay dynamic)',
+        helperText: 'Use {hours} for actual earned CPE hours (e.g. Cat 5 CPE Hours: {hours} Hour)',
       },
       {
         key: 'signatoryTitle',
@@ -260,7 +250,7 @@ export function CertificateTemplateSettingsCard() {
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Control the static wording on generated certificate PDFs. Learner name, course title,
-              dates, CPE pillar lines, and certificate number stay dynamic.
+              dates, CPE hours, and certificate number stay dynamic.
             </Typography>
           </Box>
 
@@ -305,46 +295,38 @@ export function CertificateTemplateSettingsCard() {
         <Stack spacing={2.5}>
           <Box>
             <Typography variant="h6" sx={{ mb: 1 }}>
-              Header logos (max 3)
+              Header logo
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Upload left, centre, and right logos for the certificate header. If a slot is empty,
-              the built-in default logo is used.
+              Upload the centre logo shown at the top of the certificate. If empty, the built-in
+              default logo is used.
             </Typography>
           </Box>
 
-          <Grid container spacing={2}>
-            {LOGO_LABELS.map((label, index) => (
-              <Grid item xs={12} md={4} key={label}>
-                <Stack spacing={1.5}>
-                  <Typography variant="subtitle2">{label}</Typography>
-                  <Upload
-                    coverPreview
-                    value={logoFiles[index] || settings.logoUrls[index] || null}
-                    onDrop={(files) => handleDropLogo(index, files)}
-                    onDelete={
-                      logoFiles[index] || settings.logoUrls[index]
-                        ? () => handleRemoveLogo(index)
-                        : undefined
-                    }
-                    accept={{ 'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'] }}
-                    maxSize={5 * 1024 * 1024}
-                    disabled={loading || logoUploadingIndex != null}
-                    helperText="PNG with transparent background recommended."
-                  />
-                  <LoadingButton
-                    size="small"
-                    variant="contained"
-                    loading={logoUploadingIndex === index}
-                    disabled={!logoFiles[index] || loading}
-                    onClick={() => handleUploadLogo(index)}
-                  >
-                    Save logo
-                  </LoadingButton>
-                </Stack>
-              </Grid>
-            ))}
-          </Grid>
+          <Stack spacing={1.5} sx={{ maxWidth: 420 }}>
+            <Upload
+              coverPreview
+              value={logoFile || settings.logoUrls[CENTER_LOGO_INDEX] || null}
+              onDrop={handleDropLogo}
+              onDelete={
+                logoFile || settings.logoUrls[CENTER_LOGO_INDEX] ? handleRemoveLogo : undefined
+              }
+              accept={{ 'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'] }}
+              maxSize={5 * 1024 * 1024}
+              disabled={loading || logoUploading}
+              helperText="PNG with transparent background recommended."
+            />
+            <LoadingButton
+              size="small"
+              variant="contained"
+              loading={logoUploading}
+              disabled={!logoFile || loading}
+              onClick={handleUploadLogo}
+              sx={{ alignSelf: 'flex-start' }}
+            >
+              Save logo
+            </LoadingButton>
+          </Stack>
         </Stack>
       </Card>
 

@@ -11,10 +11,14 @@ import {
 } from 'pdf-lib';
 import {
   BuildCertificatePdfInput,
+  CERTIFICATE_CENTER_LOGO_FILE,
+  CERTIFICATE_CENTER_LOGO_INDEX,
   CERTIFICATE_TEMPLATE_DEFAULTS,
   formatCompletedDate,
+  formatCpeSectionHeading,
   readRasterImageSize,
   registerCertificateFonts,
+  resolveCertificateCpeHours,
   resolveFontPath,
   resolvePublicCertificateAsset,
   resolveUploadAssetPath,
@@ -72,7 +76,7 @@ async function embedRasterImage(pdf: PdfLibDocument, filePath: string) {
   return pdf.embedPng(bytes);
 }
 
-/** Same triple-logo lockup as `drawTripleLogoHeader` in certificate-pdf-shared (top 52, height 38). */
+/** Center header logo only — same placement as `drawTripleLogoHeader` (top 52, height 38). */
 async function drawTripleLogoHeaderPdfLib(
   pdf: PdfLibDocument,
   page: PDFPage,
@@ -83,69 +87,35 @@ async function drawTripleLogoHeaderPdfLib(
   const scale = pageHeight / REF_PAGE_H;
   const logoHeight = 38 * scale;
   const topFromPageTop = 52 * scale;
-  const staticFiles = ['img2.png', 'img1.png', 'img3.png'];
-  const logos: { image: Awaited<ReturnType<typeof embedRasterImage>>; width: number; height: number }[] = [];
+  const customPath = resolveUploadAssetPath(logoUrls?.[CERTIFICATE_CENTER_LOGO_INDEX]);
+  const path = customPath || resolvePublicCertificateAsset(CERTIFICATE_CENTER_LOGO_FILE);
+  if (!path) return;
 
-  for (let i = 0; i < staticFiles.length; i += 1) {
-    const file = staticFiles[i];
-    const customPath = resolveUploadAssetPath(logoUrls?.[i]);
-    const path = customPath || resolvePublicCertificateAsset(file);
-    if (!path) continue;
-    const size = readRasterImageSize(path);
-    if (!size?.height) continue;
-    try {
-      const image = await embedRasterImage(pdf, path);
-      logos.push({
-        image,
-        width: (size.width / size.height) * logoHeight,
-        height: logoHeight,
-      });
-    } catch {
-      // skip
-    }
+  const size = readRasterImageSize(path);
+  if (!size?.height) return;
+
+  let image: Awaited<ReturnType<typeof embedRasterImage>>;
+  try {
+    image = await embedRasterImage(pdf, path);
+  } catch {
+    return;
   }
-  if (logos.length === 0) return;
 
-  const gap = 4 * scale;
-  const dividerGap = 4 * scale;
-  const dividersWidth = Math.max(0, logos.length - 1) * (dividerGap * 2 + 1);
-  const logosWidth = logos.reduce((sum, l) => sum + l.width, 0);
-  const totalWidth = logosWidth + gap * Math.max(0, logos.length - 1) + dividersWidth;
-
-  const maxLogoH = Math.max(...logos.map((l) => l.height));
-  const drawLogoY = pageHeight - topFromPageTop - maxLogoH;
-  const dividerH = Math.max(24 * scale, logoHeight - 6 * scale);
+  const logoWidth = (size.width / size.height) * logoHeight;
+  const drawLogoY = pageHeight - topFromPageTop - logoHeight;
   const maskPadX = 6 * scale;
   const maskPadY = 4 * scale;
-  const lockupX = (pageWidth - totalWidth) / 2;
+  const lockupX = (pageWidth - logoWidth) / 2;
 
-  // Mask only the logo lockup — not full page width
   page.drawRectangle({
     x: lockupX - maskPadX,
     y: drawLogoY - maskPadY,
-    width: totalWidth + maskPadX * 2,
-    height: maxLogoH + maskPadY * 2,
+    width: logoWidth + maskPadX * 2,
+    height: logoHeight + maskPadY * 2,
     color: rgb(1, 1, 1),
   });
 
-  let x = lockupX;
-  for (let i = 0; i < logos.length; i += 1) {
-    const logo = logos[i];
-    if (i > 0) {
-      x += gap;
-      const dx = x + dividerGap;
-      const dy = drawLogoY + (logoHeight - dividerH) / 2;
-      page.drawLine({
-        start: { x: dx, y: dy },
-        end: { x: dx, y: dy + dividerH },
-        thickness: 0.7,
-        color: rgb(154 / 255, 160 / 255, 166 / 255),
-      });
-      x += dividerGap * 2 + 1;
-    }
-    page.drawImage(logo.image, { x, y: drawLogoY, width: logo.width, height: logo.height });
-    x += logo.width;
-  }
+  page.drawImage(image, { x: lockupX, y: drawLogoY, width: logoWidth, height: logoHeight });
 }
 
 function drawCenteredInBand(
@@ -498,9 +468,13 @@ async function stampCertificateTemplate(
   }
 
   top += 34;
+  const cpeHeading = formatCpeSectionHeading(
+    cpeSectionLabel,
+    resolveCertificateCpeHours(input),
+  );
   drawCenteredText(
     page,
-    cpeSectionLabel,
+    cpeHeading,
     width,
     toY(top, 11),
     11,
@@ -508,27 +482,6 @@ async function stampCertificateTemplate(
     navy,
     0.8,
   );
-
-  top += 18;
-  const pillarRows =
-    Array.isArray(input.pillarCpeHours) && input.pillarCpeHours.length > 0
-      ? [...input.pillarCpeHours].sort((a, b) => a.pillarIndex - b.pillarIndex)
-      : [
-          {
-            pillarIndex: 1,
-            earnedCpeHours:
-              input.earnedCpeHours != null && Number.isFinite(Number(input.earnedCpeHours))
-                ? Math.max(0, Number(input.earnedCpeHours))
-                : 0,
-          },
-        ];
-
-  for (const pillar of pillarRows) {
-    const hours = Math.max(0, Number(pillar.earnedCpeHours) || 0);
-    const line = `Pillar ${pillar.pillarIndex} - ${hours.toFixed(2)} Hours`;
-    drawCenteredText(page, line, width, toY(top, 11), 11, sans, navy);
-    top += 15;
-  }
 
   await drawDynamicSignatoryFooter(pdf, page, width, height, input, sans);
 

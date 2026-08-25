@@ -35,7 +35,7 @@ export type BuildCertificatePdfInput = {
   /** Programme pillar CPE breakdown (Pillar 1 / 2 / 3). */
   pillarCpeHours?: CertificatePdfPillarCpe[];
   logoUrl?: string | null;
-  /** Header logos left → center → right (img2, img1, img3). */
+  /** Header logos left → center → right (img2, img1, img3). Only the center slot is drawn. */
   logoUrls?: (string | null | undefined)[];
   signatureUrl?: string | null;
   transcript?: CertificatePdfTranscriptModule[];
@@ -56,7 +56,7 @@ export const CERTIFICATE_TEMPLATE_DEFAULTS = {
   titleLine2Right: 'ATTENDANCE',
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
-  cpeSectionLabel: 'Total CPE Hours and Pillar:',
+  cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
   signatoryName: 'Sign off: Fann Kor',
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
@@ -214,6 +214,44 @@ export function formatCpeNumber(hours?: number | null): string {
   return `${value.toFixed(1)} h`;
 }
 
+/** Center header logo slot (left=0, center=1, right=2). */
+export const CERTIFICATE_CENTER_LOGO_INDEX = 1;
+export const CERTIFICATE_CENTER_LOGO_FILE = 'img1.png';
+
+export function formatActualCpeHours(hours?: number | null): string {
+  const value = Number(hours);
+  if (!Number.isFinite(value) || value < 0) return '0';
+  const rounded = Math.round(value * 100) / 100;
+  if (Number.isInteger(rounded)) return String(rounded);
+  return String(rounded);
+}
+
+export function resolveCertificateCpeHours(input: {
+  earnedCpeHours?: number | null;
+  pillarCpeHours?: CertificatePdfPillarCpe[];
+}): number {
+  if (input.earnedCpeHours != null && Number.isFinite(Number(input.earnedCpeHours))) {
+    return Math.max(0, Number(input.earnedCpeHours));
+  }
+  if (Array.isArray(input.pillarCpeHours) && input.pillarCpeHours.length > 0) {
+    return input.pillarCpeHours.reduce(
+      (sum, pillar) => sum + Math.max(0, Number(pillar.earnedCpeHours) || 0),
+      0,
+    );
+  }
+  return 0;
+}
+
+/** Heading like "Cat 5 CPE Hours: 8 Hour". `{hours}` is replaced with earned CPE. */
+export function formatCpeSectionHeading(label: string | null | undefined, hours?: number | null): string {
+  const hoursText = formatActualCpeHours(hours);
+  const template = String(label || '').trim();
+  if (template.includes('{hours}')) {
+    return template.replace(/\{hours\}/g, hoursText);
+  }
+  return `Cat 5 CPE Hours: ${hoursText} Hour`;
+}
+
 export function resolveFontPath(fileName: string): string | null {
   // Prefer module-relative paths so Nest `dist/` and different CWDs still resolve.
   const candidates = [
@@ -269,61 +307,30 @@ export function readRasterImageSize(
 }
 
 /**
- * Centered header: img2 | img1 | img3 (ISCA | OCC | Charity Council) with thin dividers.
- * Same lockup on certificate page 1 and transcript.
+ * Centered header logo only (img1 / centre slot). Left and right logos are not drawn.
  */
 export function drawTripleLogoHeader(
   doc: PDFKit.PDFDocument,
   top = 52,
   logoHeight = 38,
+  logoUrls?: (string | null | undefined)[],
 ): number {
   const pageWidth = doc.page.width;
-  const gap = 4;
-  const dividerGap = 4;
-  const dividerH = Math.max(24, logoHeight - 6);
-
-  const files = ['img2.png', 'img1.png', 'img3.png'];
-  const present = files
-    .map((file) => {
-      const path = resolvePublicCertificateAsset(file);
-      if (!path) return null;
-      const size = readRasterImageSize(path);
-      if (!size || size.height <= 0) return null;
-      return { path, width: (size.width / size.height) * logoHeight };
-    })
-    .filter((item): item is { path: string; width: number } => item != null);
-
-  if (present.length === 0) {
+  const customPath = resolveUploadAssetPath(logoUrls?.[CERTIFICATE_CENTER_LOGO_INDEX]);
+  const path = customPath || resolvePublicCertificateAsset(CERTIFICATE_CENTER_LOGO_FILE);
+  if (!path) {
     return top + logoHeight + 26;
   }
 
-  const logosWidth = present.reduce((sum, l) => sum + l.width, 0);
-  const dividersWidth = Math.max(0, present.length - 1) * (dividerGap * 2 + 1);
-  const totalWidth = logosWidth + gap * Math.max(0, present.length - 1) + dividersWidth;
-  let x = (pageWidth - totalWidth) / 2;
-  const logoY = top;
+  const size = readRasterImageSize(path);
+  const width = size?.height ? (size.width / size.height) * logoHeight : logoHeight;
+  const x = (pageWidth - width) / 2;
 
-  present.forEach((logo, index) => {
-    if (index > 0) {
-      x += gap;
-      const dx = x + dividerGap;
-      const dy = logoY + (logoHeight - dividerH) / 2;
-      doc
-        .moveTo(dx, dy)
-        .lineTo(dx, dy + dividerH)
-        .strokeColor('#9AA0A6')
-        .lineWidth(0.7)
-        .stroke();
-      x += dividerGap * 2 + 1;
-    }
-
-    try {
-      doc.image(logo.path, x, logoY, { height: logoHeight });
-    } catch {
-      // skip
-    }
-    x += logo.width;
-  });
+  try {
+    doc.image(path, x, top, { height: logoHeight });
+  } catch {
+    // skip
+  }
 
   return top + logoHeight + 28;
 }
