@@ -531,7 +531,7 @@ export async function buildCourseCertificatePdf(
     if (transcriptBuf && transcriptBuf.length > 0) {
       const transcriptPdf = await PdfLibDocument.load(transcriptBuf);
       const pages = await out.copyPages(transcriptPdf, transcriptPdf.getPageIndices());
-      pages.forEach((p) => out.addPage(p));
+      pages.forEach((p:any) => out.addPage(p));
     }
   } catch {
     // transcript optional — certificate page still returned
