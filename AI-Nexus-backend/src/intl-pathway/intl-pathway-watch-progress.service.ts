@@ -590,10 +590,7 @@ export class IntlPathwayWatchProgressService {
       return {
         moduleId: String(mod.moduleId || mod.id || ''),
         moduleTitle: String(mod.title || mod.code),
-        courseTitle:
-          planKey === 'student'
-            ? 'AI Fluency Pathway — Pillar 1 Foundations'
-            : 'AI Fluency Pathway — Full Programme',
+        courseTitle: 'AI Fluency\n(AI×Accountancy)',
         pillarIndex,
         completedSections: row?.isCompleted ? 1 : 0,
         totalSections: 1,
@@ -613,10 +610,7 @@ export class IntlPathwayWatchProgressService {
       };
     });
 
-    const courseTitle =
-      planKey === 'student'
-        ? 'AI Fluency Pathway — Pillar 1 Foundations (Student)'
-        : 'AI Fluency Pathway — Full / Role Programme';
+    const courseTitle = 'AI Fluency\n(AI×Accountancy)';
 
     const certTemplate = await this.appSettingsService.getCertificateTemplateForPdf();
 

@@ -57,7 +57,7 @@ export const CERTIFICATE_TEMPLATE_DEFAULTS = {
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Total CPE Hours and Pillar:',
-  signatoryName: 'QUEK MU LIM',
+  signatoryName: 'Sign off: Fann Kor',
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
 } as const;

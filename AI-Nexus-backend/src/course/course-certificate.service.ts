@@ -1220,6 +1220,7 @@ export class CourseCertificateService {
 
   async getAdminCertificates(filters: {
     userName?: string;
+    userId?: string;
     courseTitle?: string;
     courseId?: string;
     q?: string;
@@ -1236,6 +1237,10 @@ export class CourseCertificateService {
 
     if (filters.courseId) {
       qb.andWhere('cert.courseId = :courseId', { courseId: String(filters.courseId).trim() });
+    }
+
+    if (filters.userId) {
+      qb.andWhere('cert.userId = :userId', { userId: String(filters.userId).trim() });
     }
 
     if (filters.userName) {

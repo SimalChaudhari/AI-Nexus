@@ -16,4 +16,6 @@ export * from './user-fee-waiver-audit-panel';
 
 export * from './user-tracking-panel';
 
+export * from './user-certificates-panel';
+
 export * from './user-profile-detail-view';

@@ -361,7 +361,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS: CertificateTemplateSettings 
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Total CPE Hours and Pillar:',
-  signatoryName: 'QUEK MU LIM',
+  signatoryName: 'Sign off: Fann Kor',
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   logoUrls: ['', '', ''],
@@ -782,7 +782,7 @@ export class AppSettingsService {
         this.cleanText(source.cpeSectionLabel ?? prev.cpeSectionLabel, 120) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.cpeSectionLabel,
       signatoryName:
-        this.cleanText(source.signatoryName ?? prev.signatoryName, 80) ||
+        this.cleanText(source.signatoryName ?? prev.signatoryName, 120) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryName,
       signatoryTitle:
         this.cleanText(source.signatoryTitle ?? prev.signatoryTitle, 120) ||

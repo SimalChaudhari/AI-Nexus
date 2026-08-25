@@ -178,15 +178,10 @@ async function drawDynamicSignatoryFooter(
   pageHeight: number,
   input: BuildCertificatePdfInput,
   sans: PDFFont,
-  sansBold: PDFFont,
 ): Promise<void> {
   const scale = pageHeight / REF_PAGE_H;
   const navy = hexRgb(COA.navy);
-  const navyDeep = hexRgb(COA.navyDeep);
 
-  const signatoryName =
-    String(input.signatoryName || CERTIFICATE_TEMPLATE_DEFAULTS.signatoryName).trim() ||
-    CERTIFICATE_TEMPLATE_DEFAULTS.signatoryName;
   const signatoryTitle =
     String(input.signatoryTitle || CERTIFICATE_TEMPLATE_DEFAULTS.signatoryTitle).trim() ||
     CERTIFICATE_TEMPLATE_DEFAULTS.signatoryTitle;
@@ -196,7 +191,6 @@ async function drawDynamicSignatoryFooter(
   const certNo = String(input.certificateNo || '').trim();
   const certNoLabel = certNo ? `CERTIFICATE NO: ${certNo}` : 'CERTIFICATE NO:';
 
-  const nameSize = 12 * scale;
   const smallSize = 9 * scale;
   const certSpacing = 0.8;
   const sigW = 120 * scale;
@@ -205,14 +199,13 @@ async function drawDynamicSignatoryFooter(
   const certNoY = 68 * scale;
   const lift = 14 * scale;
   const issuerY = certNoY + 26 * scale + lift;
-  const titleY = issuerY + 14 * scale;
-  const nameY = titleY + 16 * scale;
-  // Signature sits above template line, just above QUEK MU LIM
-  const sigY = nameY - 10 * scale + sigH;
+  // Extra whitespace between issuer and signatory title.
+  const titleY = issuerY + 18 * scale;
+  // Signature above title — no signatory name text
+  const sigY = titleY + 6 * scale + sigH;
 
   const lockupWidth = Math.max(
     sigW,
-    sansBold.widthOfTextAtSize(signatoryName, nameSize),
     sans.widthOfTextAtSize(signatoryTitle, smallSize),
     sans.widthOfTextAtSize(issuerName, smallSize),
     spacedWidth(sans, certNoLabel, smallSize, certSpacing),
@@ -234,7 +227,6 @@ async function drawDynamicSignatoryFooter(
     }
   }
 
-  drawCenteredInBand(page, signatoryName, lockupX, lockupWidth, nameY, nameSize, sansBold, navyDeep);
   drawCenteredInBand(page, signatoryTitle, lockupX, lockupWidth, titleY, smallSize, sans, navy);
   drawCenteredInBand(page, issuerName, lockupX, lockupWidth, issuerY, smallSize, sans, navy);
   drawCenteredInBand(
@@ -329,23 +321,27 @@ function drawCenteredText(
 }
 
 function wrapLines(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = String(text || '')
-    .trim()
-    .split(/\s+/)
+  const paragraphs = String(text || '')
+    .split(/\r?\n/)
+    .map((p) => p.trim())
     .filter(Boolean);
-  if (words.length === 0) return [];
+  if (paragraphs.length === 0) return [];
+
   const lines: string[] = [];
-  let line = '';
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (font.widthOfTextAtSize(test, size) <= maxWidth) {
-      line = test;
-    } else {
-      if (line) lines.push(line);
-      line = word;
+  for (const paragraph of paragraphs) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    let line = '';
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (font.widthOfTextAtSize(test, size) <= maxWidth) {
+        line = test;
+      } else {
+        if (line) lines.push(line);
+        line = word;
+      }
     }
+    if (line) lines.push(line);
   }
-  if (line) lines.push(line);
   return lines;
 }
 
@@ -534,7 +530,7 @@ async function stampCertificateTemplate(
     top += 15;
   }
 
-  await drawDynamicSignatoryFooter(pdf, page, width, height, input, sans, sansBold);
+  await drawDynamicSignatoryFooter(pdf, page, width, height, input, sans);
 
   return pdf.save();
 }

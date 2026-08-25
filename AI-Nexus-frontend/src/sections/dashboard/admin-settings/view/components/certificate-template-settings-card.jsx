@@ -25,7 +25,6 @@ export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS = {
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Total CPE Hours and Pillar:',
-  signatoryName: 'QUEK MU LIM',
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   logoUrls: ['', '', ''],
@@ -53,7 +52,6 @@ function normalizeSettings(data) {
     awardedToLabel: source.awardedToLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.awardedToLabel,
     sessionLabel: source.sessionLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.sessionLabel,
     cpeSectionLabel: source.cpeSectionLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.cpeSectionLabel,
-    signatoryName: source.signatoryName ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryName,
     signatoryTitle: source.signatoryTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryTitle,
     issuerName: source.issuerName ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.issuerName,
     logoUrls,
@@ -102,7 +100,6 @@ export function CertificateTemplateSettingsCard() {
         awardedToLabel: settings.awardedToLabel,
         sessionLabel: settings.sessionLabel,
         cpeSectionLabel: settings.cpeSectionLabel,
-        signatoryName: settings.signatoryName,
         signatoryTitle: settings.signatoryTitle,
         issuerName: settings.issuerName,
       };
@@ -238,11 +235,6 @@ export function CertificateTemplateSettingsCard() {
         key: 'cpeSectionLabel',
         label: 'CPE section heading',
         helperText: 'Heading above pillar hour lines (pillar names stay dynamic)',
-      },
-      {
-        key: 'signatoryName',
-        label: 'Signatory name',
-        helperText: 'Footer name below signature',
       },
       {
         key: 'signatoryTitle',
