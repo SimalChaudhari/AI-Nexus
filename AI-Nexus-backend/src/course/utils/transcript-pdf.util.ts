@@ -162,14 +162,16 @@ export function drawTranscriptPage(
       if (row.isCourseHeader) {
         y += 6;
         fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
-        doc
-          .fontSize(10)
-          .fillColor(TITLE_NAVY)
-          .text(row.title, cols.colModule, y, {
-            width: contentWidth,
-            lineBreak: false,
-          });
-        y += 16;
+        doc.fontSize(10).fillColor(TITLE_NAVY);
+        // Long titles (e.g. "Pillar 1 — AI Fluency (AI+Accountancy)") wrap; fixed +16 caused overlap.
+        const headerHeight = Math.max(
+          12,
+          doc.heightOfString(row.title, { width: cols.moduleWidth }),
+        );
+        doc.text(row.title, cols.colModule, y, {
+          width: cols.moduleWidth,
+        });
+        y += headerHeight + 10;
         fontOrFallback(doc, 'CertSans', 'Helvetica');
         doc.fontSize(9.5).fillColor(BODY_BLUE);
         return;
