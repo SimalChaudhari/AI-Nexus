@@ -365,7 +365,6 @@ export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS: CertificateTemplateSettings 
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   transcriptTitle: 'AI FLUENCY',
-  transcriptSubtitle: 'A programme under the GovernWell Series by the Charity Council of Singapore',
   logoUrls: ['', '', ''],
   signatureUrl: null,
 };
@@ -798,9 +797,6 @@ export class AppSettingsService {
       transcriptTitle:
         this.cleanText(source.transcriptTitle ?? prev.transcriptTitle, 160) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptTitle,
-      transcriptSubtitle:
-        this.cleanText(source.transcriptSubtitle ?? prev.transcriptSubtitle, 240) ||
-        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptSubtitle,
       logoUrls,
       signatureUrl:
         signatureRaw == null || signatureRaw === ''

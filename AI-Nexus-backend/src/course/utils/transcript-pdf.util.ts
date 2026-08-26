@@ -35,14 +35,13 @@ function drawTranscriptHeader(
   return drawTripleLogoHeader(doc, 42, 36, logoUrls);
 }
 
-/** Programme title + subtitle (Crimson Pro / Open Sans). */
+/** Programme title (Crimson Pro). */
 function drawProgrammeTitleBlock(
   doc: PDFKit.PDFDocument,
   y: number,
   contentWidth: number,
   margin: number,
   title: string,
-  subtitle: string,
 ): number {
   // Same faux-bold as certificate “CERTIFICATE OF ATTENDANCE” (stroke + fill)
   fontOrFallback(doc, 'CertSerif-Bold', 'Times-Bold');
@@ -65,20 +64,7 @@ function drawProgrammeTitleBlock(
     y += 26;
   }
 
-  const subtitleText = String(subtitle || '').trim();
-  if (subtitleText) {
-    fontOrFallback(doc, 'CertSans', 'Helvetica');
-    doc.fontSize(10).fillColor(BODY_BLUE);
-    doc.text(subtitleText, margin, y, {
-      width: contentWidth,
-      align: 'center',
-    });
-    y = doc.y + 34;
-  } else {
-    y += 20;
-  }
-
-  return y;
+  return y + 20;
 }
 
 function drawTableHeaders(
@@ -149,13 +135,9 @@ export function drawTranscriptPage(
     input.transcriptTitle,
     CERTIFICATE_TEMPLATE_DEFAULTS.transcriptTitle,
   );
-  const transcriptSubtitle = pickTranscriptText(
-    input.transcriptSubtitle,
-    CERTIFICATE_TEMPLATE_DEFAULTS.transcriptSubtitle,
-  );
 
   let y = drawTranscriptHeader(doc, input.logoUrls);
-  y = drawProgrammeTitleBlock(doc, y, contentWidth, margin, transcriptTitle, transcriptSubtitle);
+  y = drawProgrammeTitleBlock(doc, y, contentWidth, margin, transcriptTitle);
 
   const cols = {
     margin,
@@ -181,7 +163,7 @@ export function drawTranscriptPage(
       if (y > pageHeight - 90) {
         doc.addPage(pageSpec);
         y = drawTranscriptHeader(doc, input.logoUrls);
-        y = drawProgrammeTitleBlock(doc, y, contentWidth, margin, transcriptTitle, transcriptSubtitle);
+        y = drawProgrammeTitleBlock(doc, y, contentWidth, margin, transcriptTitle);
         y = drawTableHeaders(doc, y, cols);
         fontOrFallback(doc, 'CertSans', 'Helvetica');
         doc.fontSize(9.5).fillColor(BODY_BLUE);
