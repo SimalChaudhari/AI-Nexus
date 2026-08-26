@@ -15,6 +15,7 @@ import {
   resolveCoursePillarIndex,
   secondsToWatchedHours,
 } from './course-program-cpe-summary.util';
+import { SalesforceCpeComplianceService } from './salesforce-cpe-compliance.service';
 
 function isSectionProgressFkViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -185,6 +186,7 @@ export class CourseSectionWatchProgressService {
     private readonly moduleRepository: Repository<CourseModuleEntity>,
     @InjectRepository(CourseEntity)
     private readonly courseRepository: Repository<CourseEntity>,
+    private readonly salesforceCpeComplianceService: SalesforceCpeComplianceService,
   ) {}
 
   private formatSecondsToHhMmSs(totalSeconds: number): string {
@@ -750,7 +752,85 @@ export class CourseSectionWatchProgressService {
       }
       throw error;
     }
+    this.schedulePillar3CpeSalesforceSync(userId, courseId);
     return this.getSectionProgress(userId, courseId, sectionId);
+  }
+
+  /**
+   * Salesforce CPE compliance is non-blocking. Call only when Pillar 3 earned hours
+   * first become visible (0.5h+) or when those hours later change.
+   */
+  private schedulePillar3CpeSalesforceSync(userId: string, courseId: string): void {
+    void this.syncPillar3CpeToSalesforce(userId, courseId).catch((error) => {
+      this.logger.warn(
+        `[Salesforce CPE] Pillar 3 sync failed for user=${userId} course=${courseId}: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+    });
+  }
+
+  private async syncPillar3CpeToSalesforce(userId: string, courseId: string): Promise<void> {
+    const course = await this.courseRepository.findOne({
+      where: { id: courseId },
+      select: ['id', 'title', 'programId', 'programPillarIndex', 'level', 'marketData'],
+    });
+    if (!course || resolveCoursePillarIndex(course) !== 3) return;
+
+    const payload = await this.buildPillar3CpePayload(userId, course);
+    if (!payload || payload.noOfCpeHours <= 0) return;
+
+    await this.salesforceCpeComplianceService.syncIfHoursChanged(payload);
+  }
+
+  private async buildPillar3CpePayload(
+    userId: string,
+    course: Pick<
+      CourseEntity,
+      'id' | 'title' | 'programId' | 'programPillarIndex' | 'level' | 'marketData'
+    >,
+  ): Promise<{
+    userId: string;
+    courseId: string;
+    programId: string | null;
+    courseTitle: string;
+    noOfCpeHours: number;
+    hoursAllocated: number;
+  } | null> {
+    const programId = course.programId || null;
+    const pillarCourses = programId
+      ? (
+          await this.courseRepository.find({
+            where: { programId, isBundle: false },
+            select: ['id', 'title', 'programPillarIndex', 'level', 'marketData', 'createdAt'],
+            order: { createdAt: 'ASC' },
+          })
+        ).filter((row) => resolveCoursePillarIndex(row) === 3)
+      : [course];
+    if (!pillarCourses.length) return null;
+
+    let watchedSeconds = 0;
+    let allocatedSum = 0;
+    let hasAllocated = false;
+    for (const pillarCourse of pillarCourses) {
+      const stats = await this.sumVideoWatchStatsForCourse(userId, pillarCourse.id);
+      watchedSeconds += stats.watchedSeconds;
+      const allocated = parseMarketDataCpeHours(pillarCourse.marketData);
+      if (allocated != null) {
+        allocatedSum += allocated;
+        hasAllocated = true;
+      }
+    }
+
+    const primary = pillarCourses[0];
+    return {
+      userId,
+      courseId: primary.id,
+      programId,
+      courseTitle: String(primary.title || '').trim(),
+      noOfCpeHours: computeCpeHoursFromWatchSeconds(watchedSeconds),
+      hoursAllocated: hasAllocated ? Math.round(allocatedSum * 100) / 100 : 0,
+    };
   }
 
   /** Section IDs where at least one learner has isCompleted=true. */
@@ -909,6 +989,26 @@ export class CourseSectionWatchProgressService {
     }
 
     const totalEarnedCpeHours = computeCpeHoursFromWatchSeconds(totalWatchedSeconds);
+
+    const pillar3 = pillarBreakdown.find((row) => row.pillarIndex === 3);
+    if (pillar3 && pillar3.earnedCpeHours > 0) {
+      void this.salesforceCpeComplianceService
+        .syncIfHoursChanged({
+          userId,
+          courseId: pillar3.courseId,
+          programId,
+          courseTitle: pillar3.courseTitle,
+          noOfCpeHours: pillar3.earnedCpeHours,
+          hoursAllocated: pillar3.allocatedCpeHours ?? 0,
+        })
+        .catch((error) => {
+          this.logger.warn(
+            `[Salesforce CPE] Pillar 3 sync failed for user=${userId} program=${programId}: ${
+              error instanceof Error ? error.message : error
+            }`,
+          );
+        });
+    }
 
     return {
       pillarBreakdown,

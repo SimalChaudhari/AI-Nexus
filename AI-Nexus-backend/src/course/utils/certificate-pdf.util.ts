@@ -372,12 +372,28 @@ async function stampCertificateTemplate(
     CERTIFICATE_TEMPLATE_DEFAULTS.cpeSectionLabel;
 
   // Title lockup — Crimson Pro Bold, size 28, letterSpacing 6
+  // P of PARTICIPATION sits under C of CERTIFICATE; OF is on the same
+  // second line to the left. The two-line block is then page-centered.
   const titleSize = 28;
   const letterSpacing = 6;
   const line1 = titleLine1;
+  const ofWord = titleLine2Left;
+  const attendanceWord = titleLine2Right;
   const line1W = spacedWidth(serifBold, line1, titleSize, letterSpacing);
-  const startX = (width - line1W) / 2;
-  const xs = drawSpacedText(
+  const ofW = spacedWidth(serifBold, ofWord, titleSize, letterSpacing);
+  const attendanceW = spacedWidth(serifBold, attendanceWord, titleSize, letterSpacing);
+  const gapAfterOf = letterSpacing * 2.5;
+  // Tiny right nudge so P sits just to the right of C's origin.
+  const relAttendanceX = 1;
+  const relOfX = relAttendanceX - gapAfterOf - ofW;
+  const bboxLeft = Math.min(0, relOfX, relAttendanceX);
+  const bboxRight = Math.max(line1W, relAttendanceX + attendanceW);
+  const originX = (width - (bboxRight - bboxLeft)) / 2 - bboxLeft;
+  const startX = originX;
+  const ofX = originX + relOfX;
+  const attendanceX = originX + relAttendanceX;
+
+  drawSpacedText(
     page,
     line1,
     startX,
@@ -389,12 +405,6 @@ async function stampCertificateTemplate(
   );
   top += titleSize + 6;
 
-  const underE = xs[1] ?? startX;
-  const ofWord = titleLine2Left;
-  const attendanceWord = titleLine2Right;
-  const ofW = spacedWidth(serifBold, ofWord, titleSize, letterSpacing);
-  const gapAfterOf = letterSpacing * 2.5;
-  const ofX = underE - gapAfterOf - ofW;
   drawSpacedText(
     page,
     ofWord,
@@ -408,7 +418,7 @@ async function stampCertificateTemplate(
   drawSpacedText(
     page,
     attendanceWord,
-    underE,
+    attendanceX,
     toY(top, titleSize),
     titleSize,
     serifBold,
@@ -475,6 +485,31 @@ async function stampCertificateTemplate(
   }
 
   top += 34;
+  const programmeLevel = String(input.programmeLevel || '').trim();
+  if (programmeLevel) {
+    const levelSize = 12;
+    const levelLabel = 'LEVEL: ';
+    const levelName = programmeLevel.toUpperCase();
+    const labelWidth = sans.widthOfTextAtSize(levelLabel, levelSize);
+    const nameWidth = sansBold.widthOfTextAtSize(levelName, levelSize);
+    const levelX = (width - (labelWidth + nameWidth)) / 2;
+    const levelY = toY(top, levelSize);
+    page.drawText(levelLabel, {
+      x: levelX,
+      y: levelY,
+      size: levelSize,
+      font: sans,
+      color: navyDeep,
+    });
+    page.drawText(levelName, {
+      x: levelX + labelWidth,
+      y: levelY,
+      size: levelSize,
+      font: sansBold,
+      color: navyDeep,
+    });
+    top += 20;
+  }
   const cpeHeading = formatCpeSectionHeading(
     cpeSectionLabel,
     resolveCertificateCpeHours(input),

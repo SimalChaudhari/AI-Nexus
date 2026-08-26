@@ -44,6 +44,8 @@ export type BuildCertificatePdfInput = {
   titleLine2Right?: string;
   awardedToLabel?: string;
   sessionLabel?: string;
+  /** Programme track shown above Cat 5 CPE hours: AI Fluency or AI Champion Group. */
+  programmeLevel?: string;
   cpeSectionLabel?: string;
   issuerName?: string;
   signatoryName?: string;
@@ -66,7 +68,19 @@ export const CERTIFICATE_TEMPLATE_DEFAULTS = {
 } as const;
 
 /** Programme name stamped on certificate + transcript — same copy for AI Nexus and International. */
-export const CERTIFICATE_PROGRAMME_DISPLAY_TITLE = 'AI Fluency\n(AI×Accountancy)';
+export const CERTIFICATE_PROGRAMME_DISPLAY_TITLE = 'AI Fluency\nAIX Accountancy';
+export const CERTIFICATE_PROGRAMME_LEVEL_FLUENCY = 'AI Fluency';
+export const CERTIFICATE_PROGRAMME_LEVEL_CHAMPION = 'AI Champion';
+/** Earned CPE below this is AI Fluency; 30 hours or more is AI Champion. */
+export const CERTIFICATE_CHAMPION_CPE_HOURS_THRESHOLD = 30;
+
+export function resolveCertificateProgrammeLevel(earnedCpeHours?: number | null): string {
+  const hours = Number(earnedCpeHours);
+  if (Number.isFinite(hours) && hours >= CERTIFICATE_CHAMPION_CPE_HOURS_THRESHOLD) {
+    return CERTIFICATE_PROGRAMME_LEVEL_CHAMPION;
+  }
+  return CERTIFICATE_PROGRAMME_LEVEL_FLUENCY;
+}
 
 export type CertificateTemplatePdfSettings = Partial<
   Pick<

@@ -9,6 +9,7 @@ import { buildCourseCertificatePdf } from '../course/utils/certificate-pdf.util'
 import {
   CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
   mergeCertificateTemplateIntoInput,
+  resolveCertificateProgrammeLevel,
 } from '../course/utils/certificate-pdf-shared.util';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 import { InternationalMembershipType } from '../intl-auth/international-user.entity';
@@ -623,6 +624,7 @@ export class IntlPathwayWatchProgressService {
           certificateNo: cert.certificateNo,
           learnerName,
           courseTitle,
+          programmeLevel: resolveCertificateProgrammeLevel(earnedCpeHours),
           completedAt: cert.completedAt,
           earnedCpeHours,
           allocatedCpeHours: earnedCpeHours,

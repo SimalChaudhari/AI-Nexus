@@ -173,7 +173,7 @@ export function drawTranscriptPage(
         y += 6;
         fontOrFallback(doc, 'CertSans-Bold', 'Helvetica-Bold');
         doc.fontSize(10).fillColor(TITLE_NAVY);
-        // Long titles (e.g. "Pillar 1 — AI Fluency (AI+Accountancy)") wrap; fixed +16 caused overlap.
+        // Long titles (e.g. "Pillar 1 — AI Fluency / AIX Accountancy") wrap; fixed +16 caused overlap.
         const headerHeight = Math.max(
           12,
           doc.heightOfString(row.title, { width: cols.moduleWidth }),

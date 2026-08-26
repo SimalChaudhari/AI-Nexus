@@ -23,6 +23,7 @@ import { buildCourseCertificatePdf } from './utils/certificate-pdf.util';
 import {
   CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
   mergeCertificateTemplateIntoInput,
+  resolveCertificateProgrammeLevel,
 } from './utils/certificate-pdf-shared.util';
 
 /** LinkedIn share text cannot use HTML/markdown — approximate bold with Mathematical Bold Unicode. */
@@ -1061,6 +1062,9 @@ export class CourseCertificateService {
           certificateNo: row.certificateNo,
           learnerName,
           courseTitle,
+          programmeLevel: row.programId
+            ? resolveCertificateProgrammeLevel(cpe.earnedCpeHours)
+            : undefined,
           completedAt: row.completedAt,
           earnedCpeHours: cpe.earnedCpeHours,
           allocatedCpeHours: cpe.allocatedCpeHours,
