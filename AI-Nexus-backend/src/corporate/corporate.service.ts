@@ -52,6 +52,14 @@ import {
   NRIC_ALREADY_REGISTERED_MESSAGE,
 } from '../auth/utils/nric-registration-guard.util';
 import * as XLSX from 'xlsx';
+import { EnrolmentAiService } from '../user/enrolment-ai.service';
+import {
+  mapAccountType,
+  mapCategoryAndCountry,
+  mapNationalityToCountry,
+  resolveIdFields,
+  type AdminEnrolmentFieldKey,
+} from '../user/admin-enrolment-map.util';
 
 // ----------------------------------------------------------------------
 
@@ -81,6 +89,42 @@ const NUDGE_CAMPAIGN_BATCH_PAUSE_MS = (() => {
   if (Number.isFinite(raw) && raw >= 0 && raw <= 60_000) return Math.floor(raw);
   return 750;
 })();
+
+type StaffEnrolHeaderMapping = {
+  field: string;
+  label: string;
+  header: string;
+  source: 'ai' | 'rules';
+};
+
+type StaffEnrolParsedLearner = CorporateStaffLearnerDto & {
+  aiNotes?: string[];
+};
+
+type StaffEnrolParseResult = {
+  learners: StaffEnrolParsedLearner[];
+  headerMappings: StaffEnrolHeaderMapping[];
+  aiUsed: boolean;
+  aiHeaderMapped: boolean;
+};
+
+const AI_FIELD_TO_CORPORATE: Partial<Record<AdminEnrolmentFieldKey, string>> = {
+  email: 'email',
+  firstName: 'first_name',
+  lastName: 'last_name',
+  nameAsPerId: 'name_as_per_id',
+  idType: 'id_type',
+  idNumber: 'id_number',
+  nationality: 'countryOfResidence',
+  citizenship: 'eligibility',
+  isca: 'iscaMemberStatus',
+  otherBodies: 'otherAccountingBodies',
+  job: 'jobFunction',
+  accounting: 'learnerAsAnAccounting',
+  org: 'company',
+  memberId: 'membershipNumber',
+  userId: 'membershipNumber',
+};
 
 export type CorporateLearnerStatus = 'Completed' | 'In Progress' | 'At Risk';
 
@@ -201,6 +245,7 @@ export class CorporateService {
     private readonly emailService: EmailService,
     private readonly oauthAuthService: OAuthAuthService,
     private readonly companyEnrollmentService: CompanyEnrollmentService,
+    private readonly enrolmentAi: EnrolmentAiService,
   ) {}
 
   private pruneStaffEnrolProgressJobs() {
@@ -1636,7 +1681,10 @@ export class CorporateService {
    * Resolve CSV columns with exact + fuzzy (≥80%) alias matching.
    * Near-miss headers (<80% but suggestive) return a clear suggestion error.
    */
-  private resolveStaffEnrolmentHeaderIndexes(rawHeaders: string[]): {
+  private resolveStaffEnrolmentHeaderIndexes(
+    rawHeaders: string[],
+    options?: { skipRequired?: boolean },
+  ): {
     salutation: number;
     first_name: number;
     last_name: number;
@@ -2048,10 +2096,11 @@ export class CorporateService {
     if (resolved.learnerAsAnAccounting < 0) {
       missingRequired.push('Is the job function accounting related?');
     }
-    if (missingRequired.length) {
+    if (missingRequired.length && !options?.skipRequired) {
       throw new BadRequestException(
         `CSV header must include: ${missingRequired.join(', ')}. `
-        + 'Extra columns are ignored. Close spellings (≥80% match) are accepted automatically.',
+        + 'Extra columns are ignored. Close spellings (≥80% match) are accepted automatically. '
+        + 'If headers are messy, AI will try to map them on upload.',
       );
     }
 
@@ -2096,11 +2145,10 @@ export class CorporateService {
   }
 
   private mapStaffEnrolmentTableToLearners(
-    rawHeaders: string[],
+    idx: ReturnType<CorporateService['resolveStaffEnrolmentHeaderIndexes']>,
     dataRows: string[][],
-  ): CorporateStaffLearnerDto[] {
-    const idx = this.resolveStaffEnrolmentHeaderIndexes(rawHeaders);
-    const learners: CorporateStaffLearnerDto[] = [];
+  ): StaffEnrolParsedLearner[] {
+    const learners: StaffEnrolParsedLearner[] = [];
 
     for (const cells of dataRows) {
       const read = (columnIndex: number) =>
@@ -2114,6 +2162,35 @@ export class CorporateService {
       const yearsRaw = read(idx.noOfYearOfRelevantWorkExperience);
       const years = yearsRaw ? Number(yearsRaw) : undefined;
       const phoneValue = read(idx.phoneNumber);
+      const rawIdType = read(idx.id_type);
+      const rawIdNumber = read(idx.id_number);
+      const citizenshipRaw = read(idx.eligibility);
+      const nationalityRaw = read(idx.countryOfResidence);
+      const iscaRaw = read(idx.iscaMemberStatus);
+
+      const ids = resolveIdFields(rawIdType, rawIdNumber);
+      const category = mapCategoryAndCountry({
+        idType: rawIdType,
+        citizenship: citizenshipRaw,
+        nationality: nationalityRaw,
+      });
+      const eligibilityFromSheet = this.resolveStaffEligibility(citizenshipRaw).value;
+      const eligibility = eligibilityFromSheet || category.eligibility;
+      let countryOfResidence = nationalityRaw || category.countryOfResidence;
+      if (eligibility === 'Singapore Citizen' || eligibility === 'Singapore PR') {
+        countryOfResidence = 'Singapore';
+      } else if (eligibility === 'Foreigner') {
+        countryOfResidence =
+          mapNationalityToCountry(nationalityRaw) || nationalityRaw || category.countryOfResidence;
+      }
+
+      const account = mapAccountType(iscaRaw);
+      let iscaMemberStatus = iscaRaw || undefined;
+      if (!iscaMemberStatus && account.accountType === 'Member') {
+        iscaMemberStatus = 'ISCA member';
+      } else if (!iscaMemberStatus && account.accountType === 'Non member') {
+        iscaMemberStatus = 'Non-member';
+      }
 
       learners.push({
         salutation: read(idx.salutation) || undefined,
@@ -2121,22 +2198,23 @@ export class CorporateService {
         last_name: lastName,
         name_as_per_id: read(idx.name_as_per_id) || undefined,
         email,
-        id_type: read(idx.id_type) || undefined,
-        id_number: read(idx.id_number) || undefined,
+        id_type: ids.idType || rawIdType || undefined,
+        id_number: ids.idNumber || undefined,
         company: read(idx.company) || undefined,
         department: read(idx.department) || undefined,
         jobFunction: read(idx.jobFunction) || undefined,
-        countryOfResidence: read(idx.countryOfResidence) || undefined,
+        countryOfResidence: countryOfResidence || undefined,
         noOfYearOfRelevantWorkExperience:
           years !== undefined && !Number.isNaN(years) ? years : undefined,
         corporateAccountId: read(idx.corporateAccountId) || undefined,
         learnerAsAnAccounting: read(idx.learnerAsAnAccounting) || undefined,
         membershipNumber: read(idx.membershipNumber) || undefined,
-        eligibility: read(idx.eligibility) || undefined,
+        eligibility: eligibility || undefined,
         phoneNumber: phoneValue || undefined,
         organisationType: read(idx.organisationType) || undefined,
-        iscaMemberStatus: read(idx.iscaMemberStatus) || undefined,
+        iscaMemberStatus,
         otherAccountingBodies: read(idx.otherAccountingBodies) || undefined,
+        aiNotes: [],
       });
     }
 
@@ -2151,7 +2229,7 @@ export class CorporateService {
     return learners;
   }
 
-  parseStaffEnrolmentCsv(buffer: Buffer): CorporateStaffLearnerDto[] {
+  private readStaffEnrolmentCsvTable(buffer: Buffer): { headers: string[]; dataRows: string[][] } {
     const text = buffer.toString('utf8').replace(/^\ufeff/, '');
     const lines = text
       .split(/\r?\n/)
@@ -2160,13 +2238,13 @@ export class CorporateService {
     if (lines.length < 2) {
       throw new BadRequestException('CSV must include a header row and at least one learner row.');
     }
-
-    const rawHeaders = this.parseCsvLine(lines[0]);
-    const dataRows = lines.slice(1).map((line) => this.parseCsvLine(line));
-    return this.mapStaffEnrolmentTableToLearners(rawHeaders, dataRows);
+    return {
+      headers: this.parseCsvLine(lines[0]),
+      dataRows: lines.slice(1).map((line) => this.parseCsvLine(line)),
+    };
   }
 
-  parseStaffEnrolmentExcel(buffer: Buffer): CorporateStaffLearnerDto[] {
+  private readStaffEnrolmentExcelTable(buffer: Buffer): { headers: string[]; dataRows: string[][] } {
     let workbook: XLSX.WorkBook;
     try {
       workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false, raw: false });
@@ -2205,17 +2283,169 @@ export class CorporateService {
       );
     }
 
-    const rawHeaders = normalizedRows[0];
-    const dataRows = normalizedRows.slice(1);
-    return this.mapStaffEnrolmentTableToLearners(rawHeaders, dataRows);
+    return { headers: normalizedRows[0], dataRows: normalizedRows.slice(1) };
   }
 
-  parseStaffEnrolmentFile(buffer: Buffer, fileName = ''): CorporateStaffLearnerDto[] {
+  private readStaffEnrolmentTable(
+    buffer: Buffer,
+    fileName = '',
+  ): { headers: string[]; dataRows: string[][] } {
     const name = String(fileName || '').toLowerCase();
     if (this.isStaffEnrolmentExcelFile(name)) {
-      return this.parseStaffEnrolmentExcel(buffer);
+      return this.readStaffEnrolmentExcelTable(buffer);
     }
-    return this.parseStaffEnrolmentCsv(buffer);
+    return this.readStaffEnrolmentCsvTable(buffer);
+  }
+
+  private assertRequiredStaffEnrolmentHeaders(
+    idx: ReturnType<CorporateService['resolveStaffEnrolmentHeaderIndexes']>,
+  ) {
+    const missing: string[] = [];
+    if (idx.first_name < 0) missing.push('First Name (required)');
+    if (idx.last_name < 0) missing.push('Last Name (Surname) (required)');
+    if (idx.email < 0) missing.push('Corporate email address (required)');
+    if (idx.eligibility < 0) missing.push('Citizenship (required)');
+    if (idx.company < 0) missing.push('Organisation name');
+    if (idx.learnerAsAnAccounting < 0) {
+      missing.push('Is the job function accounting related?');
+    }
+    if (missing.length) {
+      throw new BadRequestException(
+        `CSV header must include: ${missing.join(', ')}. `
+        + 'Extra columns are ignored. Close spellings (≥80% match) are accepted automatically. '
+        + 'AI also maps messy headers when it is configured.',
+      );
+    }
+  }
+
+  private async applyAiToStaffEnrolmentTable(params: {
+    headers: string[];
+    dataRows: string[][];
+    reportProgress?: (patch: { percent?: number; label?: string }) => void;
+  }): Promise<StaffEnrolParseResult> {
+    const { headers, dataRows, reportProgress } = params;
+    const idx = this.resolveStaffEnrolmentHeaderIndexes(headers, { skipRequired: true });
+    const source: Partial<Record<string, 'ai' | 'rules'>> = {};
+    for (const [field, column] of Object.entries(idx)) {
+      if (typeof column === 'number' && column >= 0) source[field] = 'rules';
+    }
+
+    reportProgress?.({ label: 'Mapping columns with AI…' });
+    const aiIdx = await this.enrolmentAi.mapHeaders(headers, dataRows);
+    const used = new Set(
+      Object.values(idx).filter((column): column is number => typeof column === 'number' && column >= 0),
+    );
+    if (aiIdx) {
+      for (const [aiField, column] of Object.entries(aiIdx)) {
+        if (typeof column !== 'number' || column < 0 || column >= headers.length) continue;
+        const corpField = AI_FIELD_TO_CORPORATE[aiField as AdminEnrolmentFieldKey];
+        if (!corpField || !(corpField in idx)) continue;
+        const current = (idx as Record<string, number>)[corpField];
+        if (current >= 0) continue;
+        if (used.has(column)) continue;
+        if (corpField === 'email' && !this.enrolmentAi.columnLooksLikeEmail(dataRows, column)) {
+          continue;
+        }
+        (idx as Record<string, number>)[corpField] = column;
+        used.add(column);
+        source[corpField] = 'ai';
+      }
+    }
+
+    this.assertRequiredStaffEnrolmentHeaders(idx);
+
+    const headerMappings: StaffEnrolHeaderMapping[] = (
+      [
+        ['first_name', 'First name'],
+        ['last_name', 'Last name'],
+        ['email', 'Email'],
+        ['eligibility', 'Citizenship'],
+        ['company', 'Organisation name'],
+        ['learnerAsAnAccounting', 'Accounting related'],
+        ['id_type', 'ID type'],
+        ['id_number', 'NRIC / FIN / Passport'],
+        ['countryOfResidence', 'Nationality'],
+        ['iscaMemberStatus', 'ISCA member / Non-member'],
+        ['otherAccountingBodies', 'Other accounting bodies'],
+        ['jobFunction', 'Job function'],
+        ['membershipNumber', 'ISCA member ID'],
+        ['phoneNumber', 'Phone number'],
+        ['organisationType', 'Organisation type'],
+        ['department', 'Department'],
+      ] as Array<[string, string]>
+    )
+      .filter(([field]) => (idx as Record<string, number>)[field] >= 0)
+      .map(([field, label]) => ({
+        field,
+        label,
+        header: headers[(idx as Record<string, number>)[field]] || '',
+        source: source[field] || 'rules',
+      }));
+
+    let learners = this.mapStaffEnrolmentTableToLearners(idx, dataRows);
+
+    if (this.enrolmentAi.isConfigured()) {
+      reportProgress?.({ label: 'AI verifying learner values…' });
+      const verified = await this.enrolmentAi.verifyAndCorrect(
+        learners.map((row) => {
+          const account = mapAccountType(String(row.iscaMemberStatus || ''));
+          return {
+            email: String(row.email || '').trim().toLowerCase(),
+            citizenshipRaw: String(row.eligibility || ''),
+            nationality: String(row.countryOfResidence || ''),
+            rawIdType: String(row.id_type || ''),
+            eligibility: String(row.eligibility || ''),
+            countryOfResidence: String(row.countryOfResidence || ''),
+            idType: String(row.id_type || ''),
+            idNumber: String(row.id_number || ''),
+            iscaMemberStatus: String(row.iscaMemberStatus || ''),
+            accountType: account.accountType,
+            aiNotes: [],
+          };
+        }),
+      );
+
+      learners = learners.map((row, index) => {
+        const next = verified[index];
+        if (!next) return row;
+        const eligibility =
+          this.enrolmentAi.normalizeEligibility(next.eligibility) || row.eligibility;
+        let iscaMemberStatus = row.iscaMemberStatus;
+        if (next.accountType === 'Non member') iscaMemberStatus = 'Non-member';
+        else if (next.accountType === 'Member' && !String(iscaMemberStatus || '').trim()) {
+          iscaMemberStatus = 'ISCA member';
+        }
+        return {
+          ...row,
+          eligibility: eligibility || row.eligibility,
+          countryOfResidence: next.countryOfResidence || row.countryOfResidence,
+          id_type: next.idType || row.id_type,
+          id_number: next.idNumber || undefined,
+          iscaMemberStatus,
+          aiNotes: next.aiNotes,
+        };
+      });
+    }
+
+    return {
+      learners,
+      headerMappings,
+      aiUsed: this.enrolmentAi.isConfigured(),
+      aiHeaderMapped: Boolean(aiIdx),
+    };
+  }
+
+  async parseStaffEnrolmentFile(
+    buffer: Buffer,
+    fileName = '',
+    reportProgress?: (patch: { percent?: number; label?: string }) => void,
+  ): Promise<StaffEnrolParseResult> {
+    const table = this.readStaffEnrolmentTable(buffer, fileName);
+    return this.applyAiToStaffEnrolmentTable({
+      headers: table.headers,
+      dataRows: table.dataRows,
+      reportProgress,
+    });
   }
 
   /**
@@ -2332,11 +2562,22 @@ export class CorporateService {
       };
     }
 
-    let learners: CorporateStaffLearnerDto[] = [];
+    let learners: StaffEnrolParsedLearner[] = [];
     let requiredColumnsOk = true;
+    let aiUsed = false;
+    let aiHeaderMapped = false;
+    let headerMappings: StaffEnrolHeaderMapping[] = [];
     reportProgress({ percent: 0, label: 'Parsing spreadsheet…' });
     try {
-      learners = this.parseStaffEnrolmentFile(file.buffer, file.originalname);
+      const parsed = await this.parseStaffEnrolmentFile(
+        file.buffer,
+        file.originalname,
+        reportProgress,
+      );
+      learners = parsed.learners;
+      aiUsed = parsed.aiUsed;
+      aiHeaderMapped = parsed.aiHeaderMapped;
+      headerMappings = parsed.headerMappings;
     } catch (err: unknown) {
       requiredColumnsOk = false;
       let messages: string[] = ['Invalid CSV headers or content.'];
@@ -2424,6 +2665,7 @@ export class CorporateService {
       status: 'ok' | 'error';
       statusLabel: string;
       messages: string[];
+      aiNotes: string[];
     }> = [];
 
     const totalLearners = learners.length;
@@ -2585,6 +2827,7 @@ export class CorporateService {
         status: rowHasError ? 'error' : 'ok',
         statusLabel: rowHasError ? rowMessages[0] || 'Failed' : 'Ready',
         messages: rowMessages,
+        aiNotes: Array.isArray(row.aiNotes) ? row.aiNotes : [],
       });
 
       const currentRow = i + 1;
@@ -2613,6 +2856,9 @@ export class CorporateService {
       fileName: String(file.originalname || ''),
       rowCount: learners.length,
       companyCode: companyCode || null,
+      aiUsed,
+      aiHeaderMapped,
+      headerMappings,
       errors,
       rows,
       summary: {
@@ -2665,7 +2911,13 @@ export class CorporateService {
         });
       }
 
-      let learners = this.parseStaffEnrolmentFile(file.buffer, file.originalname);
+      let learners = (await this.parseStaffEnrolmentFile(
+        file.buffer,
+        file.originalname,
+        (patch) => {
+          if (progressJobId) this.setStaffEnrolProgress(progressJobId, patch);
+        },
+      )).learners;
       const exclude = this.parseExcludeRowNumbers(params.excludeRows);
       if (exclude.size) {
         learners = learners.filter((_row, index) => !exclude.has(index + 2));

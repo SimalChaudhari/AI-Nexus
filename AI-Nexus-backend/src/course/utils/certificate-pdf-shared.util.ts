@@ -48,6 +48,9 @@ export type BuildCertificatePdfInput = {
   issuerName?: string;
   signatoryName?: string;
   signatoryTitle?: string;
+  /** Transcript page programme title (supports new lines). */
+  transcriptTitle?: string;
+  transcriptSubtitle?: string;
 };
 
 export const CERTIFICATE_TEMPLATE_DEFAULTS = {
@@ -60,6 +63,8 @@ export const CERTIFICATE_TEMPLATE_DEFAULTS = {
   signatoryName: 'Sign off: Fann Kor',
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
+  transcriptTitle: 'AI FLUENCY',
+  transcriptSubtitle: 'A programme under the GovernWell Series by the Charity Council of Singapore',
 } as const;
 
 export type CertificateTemplatePdfSettings = Partial<
@@ -74,6 +79,8 @@ export type CertificateTemplatePdfSettings = Partial<
     | 'signatoryName'
     | 'signatoryTitle'
     | 'issuerName'
+    | 'transcriptTitle'
+    | 'transcriptSubtitle'
     | 'logoUrls'
     | 'signatureUrl'
   >
@@ -141,6 +148,14 @@ export function mergeCertificateTemplateIntoInput(
       CERTIFICATE_TEMPLATE_DEFAULTS.signatoryTitle,
     ),
     issuerName: pickTemplateText(input.issuerName ?? t.issuerName, CERTIFICATE_TEMPLATE_DEFAULTS.issuerName),
+    transcriptTitle: pickTemplateText(
+      input.transcriptTitle ?? t.transcriptTitle,
+      CERTIFICATE_TEMPLATE_DEFAULTS.transcriptTitle,
+    ),
+    transcriptSubtitle: pickTemplateText(
+      input.transcriptSubtitle ?? t.transcriptSubtitle,
+      CERTIFICATE_TEMPLATE_DEFAULTS.transcriptSubtitle,
+    ),
     logoUrls,
     signatureUrl:
       input.signatureUrl != null && String(input.signatureUrl).trim()

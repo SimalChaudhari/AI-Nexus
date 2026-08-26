@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import Box from '@mui/material/Box';
-import Alert from '@mui/material/Alert';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -42,7 +41,7 @@ import { CorpBtn } from '../corporate-ui';
 // ----------------------------------------------------------------------
 
 const CSV_UPLOAD_INSTRUCTIONS =
-  'Download the template, fill learner rows, then choose your CSV or Excel (.xlsx / .xls) file. Only the listed sheet fields are used — any extra columns are ignored. The system validates required fields, email format, duplicates, citizenship, and existing app / Salesforce emails before you can submit. Use Skip on error rows to enrol only the ready records.';
+  'Download the template, fill learner rows, then choose your CSV or Excel (.xlsx / .xls) file. AI maps messy headers (for example "First Name -" or Corporate email) and checks citizenship, ID type, and member/non-member values. Extra columns are ignored. The system then validates required fields, email format, duplicates, citizenship, and existing app / Salesforce emails before you can submit. Use Skip on error rows to enrol only the ready records.';
 
 /** Template columns shown as required in the upload dialog. */
 const CSV_TEMPLATE_REQUIRED_FIELDS = new Set([
@@ -381,7 +380,21 @@ export function CorporateCsvUploadDialog({
   };
 
   const summary = validation?.summary || {};
+  const validationFooterMessage = !validation || validating
+    ? ''
+    : canSubmit
+      ? skippedErrorCount > 0
+        ? `${readyRows.length} ready · ${skippedErrorCount} skipped`
+        : `${readyRows.length} row(s) ready to enrol`
+      : fileLevelErrors.length
+        ? 'Fix file / header issues before submitting.'
+        : unskippedErrorRows.length
+          ? `${unskippedErrorRows.length} error row(s) · ${readyRows.length} ready — skip errors to enrol the ready ones`
+          : readyRows.length === 0
+            ? 'No ready rows to enrol.'
+            : 'Validation failed.';
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const fullScreen = useMediaQuery(theme.breakpoints.down('md'));
   const hasResults = Boolean(validation) || validating || progress.active;
   const expanded = hasResults || Boolean(file);
@@ -399,16 +412,27 @@ export function CorporateCsvUploadDialog({
     bgcolor: '#f1f5f9',
     borderBottom: `1px solid ${CORP.line}`,
     whiteSpace: 'nowrap',
-    py: 1.25,
+    py: 1,
   };
 
   const bodyCellSx = {
-    fontSize: 12.5,
+    fontSize: 13,
     color: CORP.ink,
     borderBottom: `1px solid ${CORP.line}`,
-    py: 1.1,
-    verticalAlign: 'top',
+    py: 0.9,
+    verticalAlign: 'middle',
   };
+
+  const summaryRows = [
+    ['Columns', summary.requiredColumnsOk ? 'OK' : 'Failed'],
+    ['Email format errors', summary.emailFormatErrors ?? 0],
+    ['Duplicate emails', summary.duplicateEmails ?? 0],
+    ['NRIC format errors', summary.nricFormatErrors ?? 0],
+    ['Duplicate NRICs', summary.duplicateNrics ?? 0],
+    ['Citizenship errors', summary.citizenshipErrors ?? 0],
+    ['Already in app', summary.alreadyInApp ?? 0],
+    ['Already in Salesforce', summary.alreadyInSalesforce ?? 0],
+  ];
 
   return (
     <Dialog
@@ -420,19 +444,33 @@ export function CorporateCsvUploadDialog({
       scroll="paper"
       PaperProps={{
         sx: {
-          borderRadius: fullScreen && expanded ? 0 : 2,
+          borderRadius: fullScreen && expanded ? 0 : { xs: 1.5, sm: 2 },
           border: fullScreen && expanded ? 'none' : `1px solid ${CORP.line}`,
-          m: fullScreen && expanded ? 0 : { xs: 1, sm: 2 },
+          m: fullScreen && expanded ? 0 : { xs: 0.75, sm: 2 },
           width: fullScreen && expanded
             ? '100%'
             : expanded
-              ? { xs: 'calc(100% - 16px)', sm: '96vw', lg: '94vw' }
-              : { xs: 'calc(100% - 24px)', sm: 520 },
-          maxWidth: fullScreen && expanded ? '100%' : expanded ? 1400 : 520,
-          height: fullScreen && expanded ? '100%' : expanded ? { xs: '92vh', md: '88vh' } : 'auto',
-          maxHeight: fullScreen && expanded ? '100%' : expanded ? '92vh' : '90vh',
+              ? { xs: 'calc(100% - 12px)', sm: '96vw', lg: '94vw' }
+              : { xs: 'calc(100% - 16px)', sm: 520 },
+          maxWidth: fullScreen && expanded
+            ? '100%'
+            : expanded
+              ? { xs: '100%', sm: 1400 }
+              : { xs: '100%', sm: 520 },
+          height: fullScreen && expanded
+            ? '100%'
+            : expanded
+              ? { xs: '92dvh', sm: '94vh', md: '92vh' }
+              : 'auto',
+          maxHeight: fullScreen && expanded
+            ? '100%'
+            : expanded
+              ? { xs: '92dvh', sm: '94vh' }
+              : '90vh',
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
+          minWidth: 0,
           transition: theme.transitions.create(['width', 'max-width', 'height'], {
             duration: theme.transitions.duration.shorter,
           }),
@@ -443,9 +481,10 @@ export function CorporateCsvUploadDialog({
         sx={{
           color: CORP.navy,
           fontWeight: 800,
-          pb: 1.25,
-          pt: { xs: 1.5, sm: 2 },
-          px: { xs: 2, sm: 3 },
+          fontSize: { xs: 16, sm: 20 },
+          pb: { xs: 1, sm: 1.25 },
+          pt: { xs: 1.25, sm: 2 },
+          px: { xs: 1.5, sm: 3 },
           flexShrink: 0,
         }}
       >
@@ -510,9 +549,10 @@ export function CorporateCsvUploadDialog({
             useFlexGap
             flexWrap="wrap"
             sx={{
-              alignItems: 'center',
-              justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+              alignItems: 'stretch',
+              justifyContent: { xs: 'stretch', sm: 'flex-end' },
               flex: { xs: '1 1 100%', sm: '0 1 auto' },
+              '& > *': { width: { xs: '100%', sm: 'auto' } },
             }}
           >
             <CorpBtn
@@ -542,20 +582,25 @@ export function CorporateCsvUploadDialog({
       <DialogContent
         dividers={expanded}
         sx={{
-          pt: expanded ? 2 : 1.5,
-          px: { xs: 1.5, sm: 3 },
-          pb: expanded ? undefined : 2,
+          pt: expanded ? { xs: 1, sm: 1.25 } : 1.5,
+          px: { xs: 1.25, sm: 2.5 },
+          pb: expanded ? { xs: 1, sm: 1.5 } : 2,
           flex: expanded ? 1 : 'none',
           minHeight: 0,
+          minWidth: 0,
+          width: '100%',
+          maxWidth: '100%',
           display: 'flex',
           flexDirection: 'column',
-          overflow: expanded ? 'hidden' : 'visible',
+          overflow: expanded ? { xs: 'auto', md: 'hidden' } : 'visible',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         {!expanded ? (
           <Box sx={{ flexShrink: 0 }}>
             <Typography sx={{ fontSize: 13, color: CORP.muted, lineHeight: 1.5, mb: 1.5 }}>
-              Download the template or choose a CSV / Excel (.xlsx, .xls) file to start validation.
+              Download the template or choose a CSV / Excel (.xlsx, .xls) file. AI maps messy
+              headers and checks citizenship, ID type, and member status before validation.
               Extra columns in your sheet are ignored.
             </Typography>
             <Typography sx={{ fontWeight: 800, fontSize: 13, color: CORP.navy, mb: 1 }}>
@@ -713,83 +758,177 @@ export function CorporateCsvUploadDialog({
         ) : null}
 
         {validation && !validating ? (
-          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {canSubmit ? (
-              <Alert severity="success" sx={{ mb: 1.5, flexShrink: 0 }}>
-                {readyRows.length} row(s) ready to enrol
-                {skippedErrorCount > 0
-                  ? ` (${skippedErrorCount} error row(s) will be skipped and not submitted).`
-                  : '. Click Submit to enrol.'}
-              </Alert>
-            ) : (
-              <Alert severity="warning" sx={{ mb: 1.5, flexShrink: 0 }}>
-                {fileLevelErrors.length
-                  ? 'File / header issues must be fixed before submitting.'
-                  : unskippedErrorRows.length
-                    ? `Validation found ${unskippedErrorRows.length} error row(s). Fix them, or skip those rows to enrol the ${readyRows.length} ready record(s).`
-                    : readyRows.length === 0
-                      ? 'No ready rows to enrol.'
-                      : 'Validation failed. Fix errors below before submitting.'}
-              </Alert>
-            )}
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              minWidth: 0,
+              width: '100%',
+              maxWidth: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 0,
+            }}
+          >
+            <Stack
+              direction="row"
+              spacing={0.5}
+              flexWrap="wrap"
+              useFlexGap
+              sx={{ mb: 0.75, flexShrink: 0 }}
+            >
+              <Chip
+                size="small"
+                color={validation.aiHeaderMapped ? 'primary' : 'default'}
+                label={
+                  validation.aiHeaderMapped ? 'AI mapped columns' : 'Built-in column mapping'
+                }
+                sx={{ fontWeight: 700, height: 22, fontSize: 11 }}
+              />
+              <Chip
+                size="small"
+                color={validation.aiUsed ? 'primary' : 'warning'}
+                label={
+                  validation.aiUsed ? 'AI verified values' : 'Built-in value mapping only'
+                }
+                sx={{ fontWeight: 700, height: 22, fontSize: 11 }}
+              />
+            </Stack>
 
-            <Box
+            {Array.isArray(validation.headerMappings) && validation.headerMappings.length ? (
+              <Box sx={{ mb: 0.75, flexShrink: 0 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 11.5, color: CORP.navy, mb: 0.5 }}>
+                  Column mapping
+                </Typography>
+                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                  {validation.headerMappings.map((item) => (
+                    <Chip
+                      key={item.field}
+                      size="small"
+                      variant="outlined"
+                      color={item.source === 'ai' ? 'primary' : 'default'}
+                      label={`${item.header || '(blank)'} → ${item.label} (${item.source === 'ai' ? 'AI' : 'rules'})`}
+                      sx={{
+                        fontWeight: 600,
+                        height: 22,
+                        maxWidth: '100%',
+                        fontSize: 11,
+                        '& .MuiChip-label': {
+                          px: 0.75,
+                          py: 0,
+                          fontSize: 11,
+                          lineHeight: 1.2,
+                        },
+                      }}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            ) : null}
+
+            {isMobile ? (
+              <Box
+                sx={{
+                  mb: 1,
+                  flexShrink: 0,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 0.75,
+                }}
+              >
+                {summaryRows.map(([label, value]) => {
+                  const isIssue = label !== 'Columns' && Number(value) > 0;
+                  const columnsFailed = label === 'Columns' && value === 'Failed';
+                  return (
+                    <Box
+                      key={label}
+                      sx={{
+                        px: 1,
+                        py: 0.75,
+                        borderRadius: 1,
+                        border: `1px solid ${CORP.line}`,
+                        bgcolor: '#fff',
+                        minWidth: 0,
+                      }}
+                    >
+                      <Typography sx={{ fontSize: 10.5, color: CORP.muted, fontWeight: 700, lineHeight: 1.25 }}>
+                        {label}
+                      </Typography>
+                      <Typography
+                        sx={{
+                          fontSize: 14,
+                          fontWeight: 800,
+                          color: isIssue || columnsFailed ? '#b91c1c' : CORP.navy,
+                          mt: 0.25,
+                        }}
+                      >
+                        {value}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            ) : (
+            <TableContainer
               sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: 'repeat(2, minmax(0, 1fr))',
-                  sm: 'repeat(3, minmax(0, 1fr))',
-                  md: 'repeat(6, minmax(0, 1fr))',
-                },
-                gap: 1,
-                mb: 1.5,
+                mb: 1,
                 flexShrink: 0,
+                width: '100%',
+                maxWidth: '100%',
+                minWidth: 0,
+                border: `1px solid ${CORP.line}`,
+                borderRadius: 1,
+                bgcolor: '#fff',
+                overflowX: 'auto',
+                WebkitOverflowScrolling: 'touch',
               }}
             >
-              {[
-                ['Columns', summary.requiredColumnsOk ? 'OK' : 'Failed'],
-                ['Email format errors', summary.emailFormatErrors ?? 0],
-                ['Duplicate emails', summary.duplicateEmails ?? 0],
-                ['NRIC format errors', summary.nricFormatErrors ?? 0],
-                ['Duplicate NRICs', summary.duplicateNrics ?? 0],
-                ['Citizenship errors', summary.citizenshipErrors ?? 0],
-                ['Already in app', summary.alreadyInApp ?? 0],
-                ['Already in Salesforce', summary.alreadyInSalesforce ?? 0],
-              ].map(([label, value]) => (
-                <Box
-                  key={label}
-                  sx={{
-                    px: { xs: 1, sm: 1.5 },
-                    py: 1,
-                    borderRadius: 1.5,
-                    border: `1px solid ${CORP.line}`,
-                    bgcolor: '#f8fafc',
-                    minWidth: 0,
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontSize: { xs: 10, sm: 11 },
-                      color: CORP.muted,
-                      fontWeight: 700,
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {label}
-                  </Typography>
-                  <Typography
-                    sx={{
-                      fontSize: { xs: 13, sm: 14 },
-                      fontWeight: 800,
-                      color: CORP.navy,
-                      mt: 0.25,
-                    }}
-                  >
-                    {value}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
+              <Table size="small" sx={{ minWidth: 640, tableLayout: 'fixed' }}>
+                <TableHead>
+                  <TableRow>
+                    {summaryRows.map(([label]) => (
+                      <TableCell
+                        key={label}
+                        sx={{
+                          ...headCellSx,
+                          fontSize: 11,
+                          whiteSpace: 'normal',
+                          lineHeight: 1.25,
+                          py: 0.6,
+                          px: 0.75,
+                        }}
+                      >
+                        {label}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  <TableRow>
+                    {summaryRows.map(([label, value]) => {
+                      const isIssue = label !== 'Columns' && Number(value) > 0;
+                      const columnsFailed = label === 'Columns' && value === 'Failed';
+                      return (
+                        <TableCell
+                          key={label}
+                          sx={{
+                            ...bodyCellSx,
+                            fontWeight: 800,
+                            fontSize: 13,
+                            py: 0.65,
+                            px: 0.75,
+                            color: isIssue || columnsFailed ? '#b91c1c' : CORP.navy,
+                          }}
+                        >
+                          {value}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+            )}
 
             {fileLevelErrors.length ? (
               <>
@@ -828,7 +967,17 @@ export function CorporateCsvUploadDialog({
             ) : null}
 
             {rows.length ? (
-              <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <Box
+                sx={{
+                  flex: { xs: 'none', md: 1 },
+                  minHeight: { xs: 280, md: 0 },
+                  minWidth: 0,
+                  width: '100%',
+                  maxWidth: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
                 <Box
                   sx={{
                     display: 'flex',
@@ -840,7 +989,7 @@ export function CorporateCsvUploadDialog({
                     flexShrink: 0,
                   }}
                 >
-                  <Typography sx={{ fontWeight: 800, fontSize: 13, color: CORP.navy }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: 14, color: CORP.navy }}>
                     Email status ({rows.length})
                     {readyRows.length ? ` · ${readyRows.length} ready` : ''}
                     {skippedErrorCount ? ` · ${skippedErrorCount} skipped` : ''}
@@ -872,31 +1021,44 @@ export function CorporateCsvUploadDialog({
                 <TableContainer
                   sx={{
                     flex: 1,
-                    minHeight: { xs: 220, sm: 300 },
+                    minHeight: { xs: 280, md: 0 },
+                    maxHeight: { xs: '62dvh', md: 'none' },
+                    minWidth: 0,
+                    width: '100%',
+                    maxWidth: '100%',
                     overflow: 'auto',
                     WebkitOverflowScrolling: 'touch',
+                    overscrollBehavior: 'contain',
                     border: `1px solid ${CORP.line}`,
                     borderRadius: 1.5,
                     bgcolor: '#fff',
+                    '& .MuiTableCell-stickyHeader': {
+                      zIndex: 2,
+                      bgcolor: '#f1f5f9',
+                    },
                   }}
                 >
                   <Table
-                    size="small"
+                    size={isMobile ? 'small' : 'medium'}
                     stickyHeader
                     sx={{
-                      minWidth: 720,
+                      minWidth: { xs: 640, sm: 860 },
                       tableLayout: 'fixed',
                       borderCollapse: 'separate',
+                      '& tbody tr:last-of-type td': {
+                        borderBottom: 0,
+                        pb: 2,
+                      },
                     }}
                   >
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ ...headCellSx, width: 72, textAlign: 'center' }}>
+                        <TableCell sx={{ ...headCellSx, width: { xs: 56, sm: 80 }, textAlign: 'center' }}>
                           Skip
                         </TableCell>
-                        <TableCell sx={{ ...headCellSx, width: 64 }}>Row</TableCell>
-                        <TableCell sx={{ ...headCellSx, width: '28%' }}>Email</TableCell>
-                        <TableCell sx={{ ...headCellSx, width: 110 }}>Status</TableCell>
+                        <TableCell sx={{ ...headCellSx, width: { xs: 52, sm: 72 } }}>Row</TableCell>
+                        <TableCell sx={{ ...headCellSx, width: { xs: '34%', sm: '26%' } }}>Email</TableCell>
+                        <TableCell sx={{ ...headCellSx, width: { xs: 88, sm: 120 } }}>Status</TableCell>
                         <TableCell sx={{ ...headCellSx, width: 'auto' }}>Details</TableCell>
                       </TableRow>
                     </TableHead>
@@ -908,6 +1070,10 @@ export function CorporateCsvUploadDialog({
                           Array.isArray(row.messages) && row.messages.length
                             ? row.messages.join(' · ')
                             : row.statusLabel || (isOk ? 'Ready to enrol' : 'Failed');
+                        const aiNotes =
+                          Array.isArray(row.aiNotes) && row.aiNotes.length
+                            ? row.aiNotes.join(' ')
+                            : '';
                         return (
                           <TableRow
                             key={`row-${row.row}-${row.email}`}
@@ -919,7 +1085,6 @@ export function CorporateCsvUploadDialog({
                                   ? 'transparent'
                                   : 'rgba(211, 47, 47, 0.04)',
                               opacity: isSkipped ? 0.72 : 1,
-                              '&:last-of-type td': { borderBottom: 0 },
                             }}
                           >
                             <TableCell sx={{ ...bodyCellSx, textAlign: 'center', px: 0.5 }}>
@@ -950,13 +1115,40 @@ export function CorporateCsvUploadDialog({
                               {row.email || '—'}
                             </TableCell>
                             <TableCell sx={{ ...bodyCellSx, whiteSpace: 'nowrap' }}>
-                              <Chip
-                                size="small"
-                                label={isSkipped ? 'Skipped' : isOk ? 'Ready' : 'Error'}
-                                color={isSkipped ? 'default' : isOk ? 'success' : 'error'}
-                                variant="outlined"
-                                sx={{ fontWeight: 700, height: 22 }}
-                              />
+                              <Box
+                                component="span"
+                                sx={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  minWidth: 72,
+                                  px: 1,
+                                  py: 0.35,
+                                  borderRadius: 1,
+                                  fontWeight: 800,
+                                  fontSize: 12,
+                                  lineHeight: 1.2,
+                                  color: isSkipped
+                                    ? '#475569'
+                                    : isOk
+                                      ? '#166534'
+                                      : '#b91c1c',
+                                  bgcolor: isSkipped
+                                    ? '#f1f5f9'
+                                    : isOk
+                                      ? '#dcfce7'
+                                      : '#fee2e2',
+                                  border: `1px solid ${
+                                    isSkipped
+                                      ? CORP.line
+                                      : isOk
+                                        ? '#86efac'
+                                        : '#fecaca'
+                                  }`,
+                                }}
+                              >
+                                {isSkipped ? 'Skipped' : isOk ? 'Ready' : 'Error'}
+                              </Box>
                             </TableCell>
                             <TableCell
                               sx={{
@@ -968,7 +1160,19 @@ export function CorporateCsvUploadDialog({
                             >
                               {isSkipped
                                 ? 'Will not be submitted with this enrolment.'
-                                : detail}
+                                : (
+                                  <>
+                                    {detail}
+                                    {aiNotes ? (
+                                      <Typography
+                                        component="span"
+                                        sx={{ display: 'block', mt: 0.5, color: CORP.muted, fontSize: 11.5 }}
+                                      >
+                                        AI: {aiNotes}
+                                      </Typography>
+                                    ) : null}
+                                  </>
+                                )}
                             </TableCell>
                           </TableRow>
                         );
@@ -984,16 +1188,36 @@ export function CorporateCsvUploadDialog({
 
       <DialogActions
         sx={{
-          px: { xs: 2, sm: 2.5 },
-          py: 1.75,
+          px: { xs: 1.5, sm: 2.5 },
+          py: { xs: 1, sm: 1.25 },
+          pb: { xs: 'max(12px, env(safe-area-inset-bottom))', sm: 1.25 },
           gap: 1,
           flexShrink: 0,
+          flexWrap: 'wrap',
+          alignItems: 'stretch',
+          justifyContent: { xs: 'stretch', sm: 'flex-end' },
           flexDirection: { xs: 'column-reverse', sm: 'row' },
           '& > :not(style)': {
             width: { xs: '100%', sm: 'auto' },
           },
         }}
       >
+        {validationFooterMessage ? (
+          <Typography
+            sx={{
+              mr: { sm: 'auto' },
+              fontSize: 12,
+              lineHeight: 1.35,
+              fontWeight: 600,
+              color: canSubmit ? '#166534' : '#b45309',
+              width: { xs: '100%', sm: 'auto' },
+              flex: { sm: '1 1 auto' },
+              minWidth: 0,
+            }}
+          >
+            {validationFooterMessage}
+          </Typography>
+        ) : null}
         <Button onClick={onClose} disabled={submitting} color="inherit">
           Cancel
         </Button>

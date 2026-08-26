@@ -27,6 +27,8 @@ export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS = {
   cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
+  transcriptTitle: 'AI FLUENCY',
+  transcriptSubtitle: 'A programme under the GovernWell Series by the Charity Council of Singapore',
   logoUrls: ['', '', ''],
   signatureUrl: '',
 };
@@ -57,6 +59,9 @@ function normalizeSettings(data) {
         : DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.cpeSectionLabel,
     signatoryTitle: source.signatoryTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryTitle,
     issuerName: source.issuerName ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.issuerName,
+    transcriptTitle: source.transcriptTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptTitle,
+    transcriptSubtitle:
+      source.transcriptSubtitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptSubtitle,
     logoUrls,
     signatureUrl: resolvePreviewUrl(source.signatureUrl || ''),
   };
@@ -105,6 +110,8 @@ export function CertificateTemplateSettingsCard() {
         cpeSectionLabel: settings.cpeSectionLabel,
         signatoryTitle: settings.signatoryTitle,
         issuerName: settings.issuerName,
+        transcriptTitle: settings.transcriptTitle,
+        transcriptSubtitle: settings.transcriptSubtitle,
       };
       const result = await appSettingsService.updateCertificateTemplateSettings(payload);
       setSettings(normalizeSettings(result?.certificateTemplateSettings || result));
@@ -236,6 +243,20 @@ export function CertificateTemplateSettingsCard() {
         label: 'Issuer organisation',
         helperText: 'e.g. ISCA ACADEMY PTE LTD',
       },
+      {
+        key: 'transcriptTitle',
+        label: 'Transcript programme title',
+        helperText: 'Shown at the top of the transcript page. Press Enter for a second line.',
+        multiline: true,
+        minRows: 2,
+      },
+      {
+        key: 'transcriptSubtitle',
+        label: 'Transcript subtitle',
+        helperText: 'Smaller line under the programme title',
+        multiline: true,
+        minRows: 2,
+      },
     ],
     []
   );
@@ -259,6 +280,8 @@ export function CertificateTemplateSettingsCard() {
               <Grid item xs={12} md={6} key={field.key}>
                 <TextField
                   fullWidth
+                  multiline={Boolean(field.multiline)}
+                  minRows={field.minRows}
                   label={field.label}
                   helperText={field.helperText}
                   value={settings[field.key] || ''}

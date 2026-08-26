@@ -396,7 +396,7 @@ export function CorporateEnrolView() {
       <CorpPageHeader
         eyebrow="Staff Enrolment"
         title="Enrol learners individually or in bulk"
-        subtitle="Enrol Singapore Citizen, Singapore PR, or Foreigner learners. Staff are created in Salesforce and receive a welcome email from Salesforce to set up login."
+        subtitle="Enrol Singapore Citizen, Singapore PR, or Foreigner learners. Upload CSV/Excel and AI will map messy columns, then staff are created in Salesforce and receive a welcome email from Salesforce to set up login."
         titleSx={{ fontSize: { xs: 22, sm: 26, md: 30 } }}
         titleActions={
           <>
@@ -799,9 +799,10 @@ export function CorporateEnrolView() {
               </Box>
               <Box component="li">
                 Click <strong>Upload CSV</strong> to open the upload popup. Download the template
-                there, choose your file, and wait for validation (columns, emails, duplicates,
-                citizenship, existing app / Salesforce accounts). Submit stays disabled until
-                validation passes. NRIC / ID number is optional.
+                there, or upload a messy Excel — AI maps headers (for example First Name → first_name)
+                and checks citizenship, ID type, and member/non-member values. Then wait for validation
+                (columns, emails, duplicates, citizenship, existing app / Salesforce accounts). Submit
+                stays disabled until validation passes. NRIC / ID number is optional.
               </Box>
               <Box component="li">
                 Use View uploaded ZIP files for supporting document ZIP uploads.

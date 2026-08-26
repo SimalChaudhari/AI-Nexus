@@ -1,5 +1,6 @@
 import {
   BuildCertificatePdfInput,
+  CERTIFICATE_TEMPLATE_DEFAULTS,
   drawTripleLogoHeader,
   flattenTranscriptModules,
   fontOrFallback,
@@ -9,8 +10,20 @@ const TITLE_NAVY = '#0E3A6E';
 const BODY_BLUE = '#1A4A82';
 const LINE_BLUE = '#1A4A82';
 
-const PROGRAMME_SUBTITLE =
-  'A programme under the GovernWell Series by the Charity Council of Singapore';
+function pickTranscriptText(
+  value: string | null | undefined,
+  fallback: string,
+): string {
+  const cleaned = String(value ?? '').trim();
+  return cleaned || fallback;
+}
+
+function splitTitleLines(title: string): string[] {
+  return String(title || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
 
 /**
  * Transcript letterhead — same center logo as certificate page.
@@ -22,8 +35,15 @@ function drawTranscriptHeader(
   return drawTripleLogoHeader(doc, 42, 36, logoUrls);
 }
 
-/** Fixed sample title + programme subtitle (Crimson Pro / Open Sans). */
-function drawProgrammeTitleBlock(doc: PDFKit.PDFDocument, y: number, contentWidth: number, margin: number): number {
+/** Programme title + subtitle (Crimson Pro / Open Sans). */
+function drawProgrammeTitleBlock(
+  doc: PDFKit.PDFDocument,
+  y: number,
+  contentWidth: number,
+  margin: number,
+  title: string,
+  subtitle: string,
+): number {
   // Same faux-bold as certificate “CERTIFICATE OF ATTENDANCE” (stroke + fill)
   fontOrFallback(doc, 'CertSerif-Bold', 'Times-Bold');
   doc
@@ -32,32 +52,31 @@ function drawProgrammeTitleBlock(doc: PDFKit.PDFDocument, y: number, contentWidt
     .strokeColor(TITLE_NAVY)
     .lineWidth(0.55);
 
-  doc.text('FINANCIAL STEWARDSHIP', margin, y, {
-    width: contentWidth,
-    align: 'center',
-    characterSpacing: 1.8,
-    lineBreak: false,
-    fill: true,
-    stroke: true,
-  });
-  y += 26;
-  doc.text('FOR CHARITIES', margin, y, {
-    width: contentWidth,
-    align: 'center',
-    characterSpacing: 1.8,
-    lineBreak: false,
-    fill: true,
-    stroke: true,
-  });
-  y += 26;
+  const titleLines = splitTitleLines(title);
+  for (const line of titleLines) {
+    doc.text(line, margin, y, {
+      width: contentWidth,
+      align: 'center',
+      characterSpacing: 1.8,
+      lineBreak: false,
+      fill: true,
+      stroke: true,
+    });
+    y += 26;
+  }
 
-  fontOrFallback(doc, 'CertSans', 'Helvetica');
-  doc.fontSize(10).fillColor(BODY_BLUE);
-  doc.text(PROGRAMME_SUBTITLE, margin, y, {
-    width: contentWidth,
-    align: 'center',
-  });
-  y = doc.y + 34;
+  const subtitleText = String(subtitle || '').trim();
+  if (subtitleText) {
+    fontOrFallback(doc, 'CertSans', 'Helvetica');
+    doc.fontSize(10).fillColor(BODY_BLUE);
+    doc.text(subtitleText, margin, y, {
+      width: contentWidth,
+      align: 'center',
+    });
+    y = doc.y + 34;
+  } else {
+    y += 20;
+  }
 
   return y;
 }
@@ -110,7 +129,7 @@ function formatCpeCategory(pillarIndex: number | null | undefined): string {
 }
 
 /**
- * Transcript page — GovernWell / Financial Stewardship sample layout + certificate fonts.
+ * Transcript page — AI Fluency layout + certificate fonts.
  * Page size should match the certificate template (e.g. letter 612×792 or A4).
  */
 export function drawTranscriptPage(
@@ -126,8 +145,17 @@ export function drawTranscriptPage(
 
   doc.addPage(pageSpec);
 
+  const transcriptTitle = pickTranscriptText(
+    input.transcriptTitle,
+    CERTIFICATE_TEMPLATE_DEFAULTS.transcriptTitle,
+  );
+  const transcriptSubtitle = pickTranscriptText(
+    input.transcriptSubtitle,
+    CERTIFICATE_TEMPLATE_DEFAULTS.transcriptSubtitle,
+  );
+
   let y = drawTranscriptHeader(doc, input.logoUrls);
-  y = drawProgrammeTitleBlock(doc, y, contentWidth, margin);
+  y = drawProgrammeTitleBlock(doc, y, contentWidth, margin, transcriptTitle, transcriptSubtitle);
 
   const cols = {
     margin,
@@ -152,8 +180,8 @@ export function drawTranscriptPage(
     rows.forEach((row) => {
       if (y > pageHeight - 90) {
         doc.addPage(pageSpec);
-        y = drawTranscriptHeader(doc);
-        y = drawProgrammeTitleBlock(doc, y, contentWidth, margin);
+        y = drawTranscriptHeader(doc, input.logoUrls);
+        y = drawProgrammeTitleBlock(doc, y, contentWidth, margin, transcriptTitle, transcriptSubtitle);
         y = drawTableHeaders(doc, y, cols);
         fontOrFallback(doc, 'CertSans', 'Helvetica');
         doc.fontSize(9.5).fillColor(BODY_BLUE);

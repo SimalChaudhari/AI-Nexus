@@ -413,6 +413,8 @@ export type CertificateTemplateSettings = {
   signatoryName?: string;
   signatoryTitle?: string;
   issuerName?: string;
+  transcriptTitle?: string;
+  transcriptSubtitle?: string;
   /** Header logos left → center → right (img2, img1, img3). Only the center slot is drawn. */
   logoUrls?: string[];
   signatureUrl?: string | null;

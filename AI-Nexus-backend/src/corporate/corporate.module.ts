@@ -23,6 +23,7 @@ import { CorporateStaffEnrolBatchEntity } from './corporate-staff-enrol-batch.en
 import { SsoModule } from '../auth/sso.module';
 import { CompanyEnrollmentModule } from '../company-enrollment/company-enrollment.module';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
+import { EnrolmentAiModule } from '../user/enrolment-ai.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AppSettingsModule } from '../app-settings/app-settings.module';
     SsoModule,
     CompanyEnrollmentModule,
     AppSettingsModule,
+    EnrolmentAiModule,
     TypeOrmModule.forFeature([
       UserEntity,
       ProgramEntity,

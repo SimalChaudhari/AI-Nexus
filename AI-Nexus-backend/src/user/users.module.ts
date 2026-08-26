@@ -16,6 +16,7 @@ import { CourseModule } from '../course/courses.module';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { LlmModule } from '../llm/llm.module';
 import { AdminEnrolmentService } from './admin-enrolment.service';
+import { EnrolmentAiModule } from './enrolment-ai.module';
 
 @Module({
     imports: [
@@ -26,6 +27,7 @@ import { AdminEnrolmentService } from './admin-enrolment.service';
         forwardRef(() => CourseModule),
         AppSettingsModule,
         LlmModule,
+        EnrolmentAiModule,
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},
