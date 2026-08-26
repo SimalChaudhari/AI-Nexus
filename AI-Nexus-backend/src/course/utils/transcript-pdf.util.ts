@@ -43,7 +43,7 @@ function drawProgrammeTitleBlock(
   margin: number,
   title: string,
 ): number {
-  // Same faux-bold as certificate “CERTIFICATE OF ATTENDANCE” (stroke + fill)
+  // Same faux-bold as certificate “CERTIFICATE OF PARTICIPATION” (stroke + fill)
   fontOrFallback(doc, 'CertSerif-Bold', 'Times-Bold');
   doc
     .fontSize(20)

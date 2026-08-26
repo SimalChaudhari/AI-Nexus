@@ -13,6 +13,7 @@ import {
   BuildCertificatePdfInput,
   CERTIFICATE_CENTER_LOGO_FILE,
   CERTIFICATE_CENTER_LOGO_INDEX,
+  CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
   CERTIFICATE_TEMPLATE_DEFAULTS,
   formatCompletedDate,
   formatCpeSectionHeading,
@@ -433,9 +434,16 @@ async function stampCertificateTemplate(
   const learnerName = String(input.learnerName || '').trim() || 'Full Name';
   const nameSize = hasCjk(learnerName) ? 30 : 40;
   const nameFont = hasCjk(learnerName) ? sansBold : script;
-  drawCenteredText(page, learnerName, width, toY(top, nameSize), nameSize, nameFont, gold);
-
-  top += nameSize * 0.72 + 14;
+  const nameMaxWidth = width - 2 * (92 * scale);
+  const nameLines = wrapLines(learnerName, nameFont, nameSize, nameMaxWidth);
+  const drawnNameLines = nameLines.length ? nameLines : [learnerName];
+  drawnNameLines.forEach((line, index) => {
+    drawCenteredText(page, line, width, toY(top, nameSize), nameSize, nameFont, gold);
+    if (index < drawnNameLines.length - 1) {
+      top += nameSize * 0.78;
+    }
+  });
+  top += nameSize * 0.72 + 22;
   drawCenteredText(
     page,
     sessionLabel,
@@ -449,8 +457,7 @@ async function stampCertificateTemplate(
 
   top += 26;
   const programme =
-    String(input.courseTitle || '').trim() ||
-    'ISCA Sustainability Professional Certification (e-Learning Modules)';
+    String(input.courseTitle || '').trim() || CERTIFICATE_PROGRAMME_DISPLAY_TITLE;
   const programmeLines = wrapLines(programme, sansBold, 13, contentWidth);
   for (const line of programmeLines) {
     drawCenteredText(page, line, width, toY(top, 13), 13, sansBold, navyDeep);

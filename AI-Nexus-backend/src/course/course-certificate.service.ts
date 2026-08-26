@@ -20,7 +20,10 @@ import { AppSettingsService } from '../app-settings/app-settings.service';
 import { SalesforceBadgeService } from '../auth/salesforce-badge.service';
 import { UserEntity } from '../user/users.entity';
 import { buildCourseCertificatePdf } from './utils/certificate-pdf.util';
-import { mergeCertificateTemplateIntoInput } from './utils/certificate-pdf-shared.util';
+import {
+  CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
+  mergeCertificateTemplateIntoInput,
+} from './utils/certificate-pdf-shared.util';
 
 /** LinkedIn share text cannot use HTML/markdown — approximate bold with Mathematical Bold Unicode. */
 function toLinkedInBoldText(value: string): string {
@@ -848,14 +851,18 @@ export class CourseCertificateService {
     for (const pillarIndex of [1, 2, 3]) {
       const course = courseByPillar.get(pillarIndex);
       if (!course) continue;
-      const courseModules = await this.buildCourseTranscript(userId, course.id, course.title);
+      const courseModules = await this.buildCourseTranscript(
+        userId,
+        course.id,
+        CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
+      );
       transcript.push(
         ...courseModules
           .filter((module) => module.completedSections > 0)
           .map((module) => ({
             ...module,
             pillarIndex,
-            courseTitle: course.title,
+            courseTitle: CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
           })),
       );
     }
@@ -918,12 +925,6 @@ export class CourseCertificateService {
       }
     }
 
-    const programIds = [...new Set(visibleRows.map((row) => row.programId).filter(Boolean))] as string[];
-    const programs = programIds.length
-      ? await this.programRepository.find({ where: { id: In(programIds) }, select: ['id', 'title'] })
-      : [];
-    const programTitleById = new Map(programs.map((program) => [program.id, program.title]));
-
     const bothBlockedMessage =
       'This certificate and digital badge are no longer available. Access has been revoked by an administrator.';
     const certificateBlockedMessage =
@@ -942,7 +943,7 @@ export class CourseCertificateService {
     return Promise.all(
       visibleRows.map(async (row) => {
         const courseTitle = row.programId
-          ? programTitleById.get(row.programId) || row.course?.title || 'Programme'
+          ? CERTIFICATE_PROGRAMME_DISPLAY_TITLE
           : row.course?.title || 'Untitled Course';
         const learnerName =
           `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() ||
@@ -978,7 +979,9 @@ export class CourseCertificateService {
           completedAt: row.completedAt,
           createdAt: row.createdAt,
           courseTitle,
-          programTitle: row.programId ? programTitleById.get(row.programId) || '' : '',
+          programTitle: row.programId
+            ? CERTIFICATE_PROGRAMME_DISPLAY_TITLE.replace(/\s+/g, ' ')
+            : '',
           marketData: row.course?.marketData || '',
           learnerName,
           certificateBlocked,
@@ -1033,14 +1036,9 @@ export class CourseCertificateService {
       throw new NotFoundException('Certificate not found');
     }
 
-    let courseTitle = row.course?.title || 'Untitled Course';
-    if (row.programId) {
-      const program = await this.programRepository.findOne({
-        where: { id: row.programId },
-        select: ['id', 'title'],
-      });
-      courseTitle = program?.title || courseTitle || 'Programme';
-    }
+    const courseTitle = row.programId
+      ? CERTIFICATE_PROGRAMME_DISPLAY_TITLE
+      : row.course?.title || 'Untitled Course';
 
     const [cpe, transcript, publicSettings, certTemplate] = await Promise.all([
       this.resolveCertificateCpeHours(row.userId, row),

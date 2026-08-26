@@ -21,7 +21,7 @@ const CENTER_LOGO_INDEX = 1;
 export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS = {
   titleLine1: 'CERTIFICATE',
   titleLine2Left: 'OF',
-  titleLine2Right: 'ATTENDANCE',
+  titleLine2Right: 'PARTICIPATION',
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
@@ -49,7 +49,10 @@ function normalizeSettings(data) {
   return {
     titleLine1: source.titleLine1 ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine1,
     titleLine2Left: source.titleLine2Left ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Left,
-    titleLine2Right: source.titleLine2Right ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right,
+    titleLine2Right:
+      source.titleLine2Right && source.titleLine2Right !== 'ATTENDANCE'
+        ? source.titleLine2Right
+        : DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right,
     awardedToLabel: source.awardedToLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.awardedToLabel,
     sessionLabel: source.sessionLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.sessionLabel,
     cpeSectionLabel:
@@ -212,7 +215,7 @@ export function CertificateTemplateSettingsCard() {
       {
         key: 'titleLine2Right',
         label: 'Title line 2 — right word',
-        helperText: 'Starts under the E (e.g. ATTENDANCE)',
+        helperText: 'Starts under the E (e.g. PARTICIPATION)',
       },
       {
         key: 'awardedToLabel',

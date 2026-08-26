@@ -55,7 +55,7 @@ export type BuildCertificatePdfInput = {
 export const CERTIFICATE_TEMPLATE_DEFAULTS = {
   titleLine1: 'CERTIFICATE',
   titleLine2Left: 'OF',
-  titleLine2Right: 'ATTENDANCE',
+  titleLine2Right: 'PARTICIPATION',
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
@@ -64,6 +64,9 @@ export const CERTIFICATE_TEMPLATE_DEFAULTS = {
   issuerName: 'ISCA ACADEMY PTE LTD',
   transcriptTitle: 'AI FLUENCY',
 } as const;
+
+/** Programme name stamped on certificate + transcript — same copy for AI Nexus and International. */
+export const CERTIFICATE_PROGRAMME_DISPLAY_TITLE = 'AI Fluency\n(AI×Accountancy)';
 
 export type CertificateTemplatePdfSettings = Partial<
   Pick<
@@ -414,7 +417,9 @@ export function flattenTranscriptModules(
   const groupByKey = new Map<string, Group>();
 
   modules.forEach((module) => {
-    const courseTitle = String(module.courseTitle || '').trim();
+    const courseTitle = String(module.courseTitle || '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const pillarIndex =
       module.pillarIndex != null && Number(module.pillarIndex) > 0
         ? Number(module.pillarIndex)

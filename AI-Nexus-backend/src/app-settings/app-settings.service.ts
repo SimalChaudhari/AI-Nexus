@@ -357,7 +357,7 @@ const CERTIFICATE_TEMPLATE_LOGOS_MAX = 3;
 export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS: CertificateTemplateSettings = {
   titleLine1: 'CERTIFICATE',
   titleLine2Left: 'OF',
-  titleLine2Right: 'ATTENDANCE',
+  titleLine2Right: 'PARTICIPATION',
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
@@ -775,9 +775,13 @@ export class AppSettingsService {
       titleLine2Left:
         this.cleanText(source.titleLine2Left ?? prev.titleLine2Left, 40) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Left,
-      titleLine2Right:
-        this.cleanText(source.titleLine2Right ?? prev.titleLine2Right, 80) ||
-        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right,
+      titleLine2Right: (() => {
+        const raw = this.cleanText(source.titleLine2Right ?? prev.titleLine2Right, 80);
+        if (!raw || raw === 'ATTENDANCE') {
+          return DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right;
+        }
+        return raw;
+      })(),
       awardedToLabel:
         this.cleanText(source.awardedToLabel ?? prev.awardedToLabel, 120) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.awardedToLabel,

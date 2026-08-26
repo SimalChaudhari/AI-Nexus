@@ -6,7 +6,10 @@ import { CourseModuleEntity } from '../course/course-module.entity';
 import { CourseModuleSectionEntity } from '../course/course-module-section.entity';
 import { computeCpeHoursFromWatchSeconds } from '../course/course-program-cpe-summary.util';
 import { buildCourseCertificatePdf } from '../course/utils/certificate-pdf.util';
-import { mergeCertificateTemplateIntoInput } from '../course/utils/certificate-pdf-shared.util';
+import {
+  CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
+  mergeCertificateTemplateIntoInput,
+} from '../course/utils/certificate-pdf-shared.util';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 import { InternationalMembershipType } from '../intl-auth/international-user.entity';
 import { InternationalUserEntity } from '../intl-auth/international-user.entity';
@@ -590,7 +593,7 @@ export class IntlPathwayWatchProgressService {
       return {
         moduleId: String(mod.moduleId || mod.id || ''),
         moduleTitle: String(mod.title || mod.code),
-        courseTitle: 'AI Fluency\n(AI×Accountancy)',
+        courseTitle: CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
         pillarIndex,
         completedSections: row?.isCompleted ? 1 : 0,
         totalSections: 1,
@@ -610,7 +613,7 @@ export class IntlPathwayWatchProgressService {
       };
     });
 
-    const courseTitle = 'AI Fluency\n(AI×Accountancy)';
+    const courseTitle = CERTIFICATE_PROGRAMME_DISPLAY_TITLE;
 
     const certTemplate = await this.appSettingsService.getCertificateTemplateForPdf();
 
