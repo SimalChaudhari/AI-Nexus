@@ -40,6 +40,7 @@ export class AffiliateInitService implements OnModuleInit {
             "code" varchar(64) NOT NULL,
             "site" varchar(32) NOT NULL DEFAULT 'payment',
             "label" varchar(255),
+            "membershipType" varchar(16),
             "isActive" boolean NOT NULL DEFAULT true,
             "expiresAt" TIMESTAMP,
             "maxRedemptions" int,
@@ -54,6 +55,9 @@ export class AffiliateInitService implements OnModuleInit {
       } else {
         await queryRunner.query(
           `ALTER TABLE "voucher_codes" ADD COLUMN IF NOT EXISTS "site" varchar(32) NOT NULL DEFAULT 'payment'`,
+        );
+        await queryRunner.query(
+          `ALTER TABLE "voucher_codes" ADD COLUMN IF NOT EXISTS "membershipType" varchar(16)`,
         );
         await queryRunner.query(
           `UPDATE "voucher_codes" SET "site" = 'payment' WHERE "site" IS NULL OR TRIM("site") = ''`,

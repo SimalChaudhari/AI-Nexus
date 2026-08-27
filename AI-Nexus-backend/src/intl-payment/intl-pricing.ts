@@ -121,24 +121,37 @@ export async function resolveIntlMembershipPricing(
   const promoMatchesCountry =
     !appliedPromo || !rowPromo || rowPromo === appliedPromo;
 
+  const planBasePrice =
+    membershipType === 'student' ? countryRow?.studentBasePrice : countryRow?.basePrice;
+  const planBaseCents =
+    membershipType === 'student'
+      ? countryRow?.studentBaseAmountCents
+      : countryRow?.baseAmountCents;
+  const planPromoPrice =
+    membershipType === 'student' ? countryRow?.studentDiscountPrice : countryRow?.discountPrice;
+  const planPromoCents =
+    membershipType === 'student'
+      ? countryRow?.studentDiscountAmountCents
+      : countryRow?.discountAmountCents;
+
   const exactBase =
-    countryRow?.basePrice != null
+    planBasePrice != null
       ? {
-          amount: countryRow.basePrice,
-          amountCents: countryRow.baseAmountCents,
-          currency: countryRow.currency || localCurrency,
+          amount: planBasePrice,
+          amountCents: planBaseCents || 0,
+          currency: countryRow?.currency || localCurrency,
           rate: 1,
         }
       : null;
   const exactPromo =
-    promoMatchesCountry && countryRow?.discountPrice != null
+    promoMatchesCountry && planPromoPrice != null
       ? {
-          amount: countryRow.discountPrice,
-          amountCents: countryRow.discountAmountCents,
-          currency: countryRow.currency || localCurrency,
+          amount: planPromoPrice,
+          amountCents: planPromoCents || 0,
+          currency: countryRow?.currency || localCurrency,
           rate: 1,
         }
-      : promoMatchesCountry && countryPromo
+      : promoMatchesCountry && membershipType !== 'student' && countryPromo
         ? {
             amount: countryPromo.amount,
             amountCents: countryPromo.amountCents,

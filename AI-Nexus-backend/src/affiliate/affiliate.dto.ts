@@ -2,6 +2,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEmail,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -78,6 +79,11 @@ export class UpsertVoucherCodeDto {
   @MaxLength(32)
   site?: string;
 
+  /** International only: student | full | both. */
+  @IsOptional()
+  @IsIn(['student', 'full', 'both'])
+  membershipType?: string | null;
+
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
@@ -108,6 +114,10 @@ export class UpdateVoucherCodeDto {
   @IsString()
   @MaxLength(255)
   label?: string;
+
+  @IsOptional()
+  @IsIn(['student', 'full', 'both'])
+  membershipType?: string | null;
 
   @IsOptional()
   @IsBoolean()

@@ -82,6 +82,8 @@ export type PromoAmountsByCountry = Record<string, number>;
 export type CountryPricingEntry = {
   basePrice: number | null;
   discountPrice: number | null;
+  studentBasePrice?: number | null;
+  studentDiscountPrice?: number | null;
   active: boolean;
   promoCode: string | null;
 };
@@ -147,6 +149,8 @@ export function sanitizeCountryPricing(input: unknown): CountryPricingMap {
     out[code] = {
       basePrice: toExactAmount(row.basePrice),
       discountPrice: toExactAmount(row.discountPrice),
+      studentBasePrice: toExactAmount(row.studentBasePrice),
+      studentDiscountPrice: toExactAmount(row.studentDiscountPrice),
       active: row.active === false ? false : true,
       promoCode: /^[A-Z0-9_-]{2,64}$/.test(promoCode) ? promoCode : null,
     };
@@ -178,6 +182,8 @@ export function listCountryPricing(
       currency: row.currency,
       basePrice: toExactAmount(item?.basePrice),
       discountPrice: toExactAmount(item?.discountPrice) ?? discountFromPromo,
+      studentBasePrice: toExactAmount(item?.studentBasePrice),
+      studentDiscountPrice: toExactAmount(item?.studentDiscountPrice),
       active: item ? item.active !== false : true,
       promoCode: item?.promoCode || null,
     };
@@ -205,15 +211,30 @@ export function resolveCountryPricing(
   const currency = resolveCurrencyForCountry(countryCode);
   const basePrice = toExactAmount(row.basePrice);
   const discountPrice = toExactAmount(row.discountPrice);
-  if (basePrice == null && discountPrice == null) return null;
+  const studentBasePrice = toExactAmount(row.studentBasePrice);
+  const studentDiscountPrice = toExactAmount(row.studentDiscountPrice);
+  if (
+    basePrice == null
+    && discountPrice == null
+    && studentBasePrice == null
+    && studentDiscountPrice == null
+  ) {
+    return null;
+  }
   return {
     countryCode,
     currency,
     basePrice,
     discountPrice,
+    studentBasePrice,
+    studentDiscountPrice,
     promoCode: row.promoCode || null,
     baseAmountCents: basePrice != null ? toPayableAmountCents(basePrice, currency) : 0,
     discountAmountCents: discountPrice != null ? toPayableAmountCents(discountPrice, currency) : 0,
+    studentBaseAmountCents:
+      studentBasePrice != null ? toPayableAmountCents(studentBasePrice, currency) : 0,
+    studentDiscountAmountCents:
+      studentDiscountPrice != null ? toPayableAmountCents(studentDiscountPrice, currency) : 0,
   };
 }
 
@@ -227,7 +248,10 @@ export function countriesAssignedToPromo(
     .filter(([, row]) => {
       if (!row || row.active === false) return false;
       if (String(row.promoCode || '').trim().toUpperCase() !== code) return false;
-      return toExactAmount(row.discountPrice) != null;
+      return (
+        toExactAmount(row.discountPrice) != null
+        || toExactAmount(row.studentDiscountPrice) != null
+      );
     })
     .map(([countryCode]) => String(countryCode || '').trim().toUpperCase())
     .filter(Boolean);

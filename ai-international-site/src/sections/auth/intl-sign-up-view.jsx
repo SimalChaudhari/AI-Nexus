@@ -108,6 +108,10 @@ function formatIntlAmount(amount, currency) {
   return Number.isInteger(cents) ? String(Math.round(cents)) : cents.toFixed(2);
 }
 
+function membershipPlanLabel(type) {
+  return type === 'student' ? 'Student' : 'Full / Role';
+}
+
 /** React 19: never spread RHF `ref` onto JSX; map it to MUI `inputRef`. */
 function textFieldProps(field) {
   const { ref, ...rest } = field;
@@ -182,8 +186,10 @@ export function IntlSignUpView() {
   );
   const [showPassword, setShowPassword] = useState(false);
   const [promoApplied, setPromoApplied] = useState(false);
+  const [promoLocksPlan, setPromoLocksPlan] = useState(false);
   const [promoMessage, setPromoMessage] = useState('');
   const [promoValidating, setPromoValidating] = useState(false);
+  const [referralResolved, setReferralResolved] = useState(!Boolean(lockedReferralCode));
   const [detectingCountry, setDetectingCountry] = useState(true);
   const [pricing, setPricing] = useState({
     currency: INTL_MEMBERSHIP_FEE.currency,
@@ -199,6 +205,7 @@ export function IntlSignUpView() {
   const payInFlightRef = useRef(false);
   const appliedPromoInputRef = useRef('');
   const affiliateTrackedRef = useRef('');
+  const promoAssignedPlanRef = useRef(false);
 
   const {
     control,
@@ -226,6 +233,9 @@ export function IntlSignUpView() {
   const paymentConsent = watch('paymentConsent');
   const selectedCountry = resolveCountryByLabel(countryOfResidence);
   const phoneLimits = getNationalPhoneLimitsForCountry(countryOfResidence);
+  const showRolePicker =
+    !promoLocksPlan && (!isPromoLockedFromReferral || referralResolved);
+  const showDetails = planChosen || promoApplied || isPromoLockedFromReferral;
 
   useEffect(() => {
     const current = String(getValues('contactNumber') || '');
@@ -316,8 +326,13 @@ export function IntlSignUpView() {
       const code = String(codeOverride ?? getValues('promoCode') ?? '').trim().toUpperCase();
       if (!code) {
         setPromoApplied(false);
+        setPromoLocksPlan(false);
         setPromoMessage('Enter a code to apply.');
         appliedPromoInputRef.current = '';
+        if (promoAssignedPlanRef.current) {
+          promoAssignedPlanRef.current = false;
+          setValue('membershipType', '', { shouldValidate: false });
+        }
         return;
       }
 
@@ -332,12 +347,34 @@ export function IntlSignUpView() {
 
         if (result?.valid || result?.discountApplied) {
           const exactCode = String(result?.appliedCode || code).trim().toUpperCase();
+          const voucherPlan = String(result?.voucherMembershipType || '').toLowerCase();
+          const locksPlan =
+            result?.locksMembership === true
+            || voucherPlan === 'student'
+            || voucherPlan === 'full';
           appliedPromoInputRef.current = exactCode;
+          promoAssignedPlanRef.current = locksPlan;
           setValue('promoCode', exactCode);
+          if (locksPlan) {
+            setValue(
+              'membershipType',
+              voucherPlan === 'student' ? 'student' : 'full',
+              { shouldValidate: true, shouldDirty: true },
+            );
+          }
+          setPromoLocksPlan(locksPlan);
           setPromoApplied(true);
           setPromoMessage(
-            result?.message || `Code verified: ${exactCode}. Promotional rate applied below.`,
+            result?.message ||
+              (locksPlan
+                ? `Code verified: ${exactCode}. ${membershipPlanLabel(voucherPlan)} plan applied.`
+                : `Code verified: ${exactCode}. Choose Student or Full / Role.`),
           );
+          window.setTimeout(() => {
+            document
+              .getElementById('intl-signup-details')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 80);
           if (result?.currency || result?.payableAmount != null) {
             setPricing((prev) => ({
               ...prev,
@@ -356,6 +393,11 @@ export function IntlSignUpView() {
         } else {
           appliedPromoInputRef.current = '';
           setPromoApplied(false);
+          setPromoLocksPlan(false);
+          if (promoAssignedPlanRef.current) {
+            promoAssignedPlanRef.current = false;
+            setValue('membershipType', '', { shouldValidate: false });
+          }
           setPromoMessage(
             result?.message ||
               result?.affiliateMessage ||
@@ -366,6 +408,11 @@ export function IntlSignUpView() {
       } catch (error) {
         appliedPromoInputRef.current = '';
         setPromoApplied(false);
+        setPromoLocksPlan(false);
+        if (promoAssignedPlanRef.current) {
+          promoAssignedPlanRef.current = false;
+          setValue('membershipType', '', { shouldValidate: false });
+        }
         setPromoMessage(
           error?.response?.data?.message ||
             error?.message ||
@@ -373,25 +420,33 @@ export function IntlSignUpView() {
         );
       } finally {
         setPromoValidating(false);
+        if (lockedReferralCode) {
+          setReferralResolved(true);
+        }
       }
     },
-    [getValues, setValue],
+    [getValues, setValue, lockedReferralCode],
   );
 
   useEffect(() => {
-    if (!planChosen || !promoApplied || !appliedPromoInputRef.current) return undefined;
+    if (!promoApplied || !appliedPromoInputRef.current) return undefined;
     applyPromoCode(appliedPromoInputRef.current);
     return undefined;
-  }, [countryOfResidence, membershipType, planChosen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [countryOfResidence, promoLocksPlan ? null : membershipTypeValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const normalized = String(promoCodeValue || '').trim().toUpperCase();
     if (appliedPromoInputRef.current && normalized !== appliedPromoInputRef.current) {
       appliedPromoInputRef.current = '';
       setPromoApplied(false);
+      setPromoLocksPlan(false);
       setPromoMessage('');
+      if (promoAssignedPlanRef.current) {
+        promoAssignedPlanRef.current = false;
+        setValue('membershipType', '', { shouldValidate: false });
+      }
     }
-  }, [promoCodeValue]);
+  }, [promoCodeValue, setValue]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -554,6 +609,35 @@ export function IntlSignUpView() {
 
       <Box sx={{ width: 1 }}>
         <Stack spacing={1.75} component="form" onSubmit={onSubmit} noValidate>
+          {promoLocksPlan ? (
+            <Box
+              sx={{
+                width: 1,
+                p: { xs: 1.25, sm: 1.5 },
+                borderRadius: 1.5,
+                border: `1px solid ${alpha('#0f766e', 0.28)}`,
+                bgcolor: alpha('#0f766e', 0.05),
+              }}
+            >
+              <Controller name="membershipType" control={control} render={() => null} />
+              <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
+                <Typography sx={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>
+                  1. Membership plan
+                </Typography>
+                <Chip
+                  size="small"
+                  label={`${membershipPlanLabel(membershipTypeValue)} · from promo`}
+                  sx={{
+                    height: 22,
+                    fontWeight: 700,
+                    fontSize: 11,
+                    bgcolor: alpha('#0f766e', 0.12),
+                    color: '#0f766e',
+                  }}
+                />
+              </Stack>
+            </Box>
+          ) : showRolePicker ? (
           <Controller
             name="membershipType"
             control={control}
@@ -599,7 +683,7 @@ export function IntlSignUpView() {
                       {selected ? (
                         <Chip
                           size="small"
-                          label={selected === 'student' ? 'Student' : 'Full / Role'}
+                          label={membershipPlanLabel(selected)}
                           sx={{
                             height: 22,
                             fontWeight: 700,
@@ -610,6 +694,11 @@ export function IntlSignUpView() {
                         />
                       ) : null}
                     </Stack>
+                    {promoApplied ? (
+                      <Typography sx={{ color: alpha(NAVY, 0.65), fontSize: 12, lineHeight: 1.4 }}>
+                        This promo works for both plans. Choose Student or Full / Role.
+                      </Typography>
+                    ) : null}
                     <Box
                       sx={{
                         display: 'grid',
@@ -682,8 +771,25 @@ export function IntlSignUpView() {
               );
             }}
           />
+          ) : isPromoLockedFromReferral && !referralResolved ? (
+            <Box
+              sx={{
+                width: 1,
+                py: 1.25,
+                px: 1.5,
+                borderRadius: 1.5,
+                border: `1px dashed ${alpha(NAVY, 0.2)}`,
+                bgcolor: alpha(NAVY, 0.02),
+                textAlign: 'center',
+              }}
+            >
+              <Typography sx={{ fontWeight: 700, color: NAVY, fontSize: 13 }}>
+                Applying referral code…
+              </Typography>
+            </Box>
+          ) : null}
 
-          {!planChosen ? (
+          {!showDetails ? (
             <Box
               sx={{
                 width: 1,
@@ -1278,7 +1384,11 @@ export function IntlSignUpView() {
                   <Stack direction="row" spacing={0.75} alignItems="center">
                     <Chip
                       size="small"
-                      label={membershipType === 'student' ? 'Student' : 'Full / Role'}
+                      label={
+                        promoApplied
+                          ? `${membershipPlanLabel(membershipType)} · promo`
+                          : membershipPlanLabel(membershipType)
+                      }
                       sx={{
                         height: 24,
                         fontWeight: 700,
