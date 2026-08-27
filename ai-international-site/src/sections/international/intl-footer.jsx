@@ -17,7 +17,7 @@ import { HOME_DASHBOARD_CONTENT_SX } from 'src/sections/home/home-section-styles
 import { INTL_NAVY, INTL_RED } from 'src/theme/intl-brand';
 import { navigateToAuthPath } from 'src/utils/intl-auth-navigate';
 
-import { INTL_REGIONS } from './intl-region';
+import { INTL_REGIONS, isLanguageSelectable } from './intl-region';
 import { INTL_LANDING_DEFAULTS } from './intl-landing-defaults';
 
 // ----------------------------------------------------------------------
@@ -111,7 +111,7 @@ function LanguageBlock({ lang, onChangeLang, regions, fullWidth = false }) {
         }}
       >
         {regions.map((r) => (
-          <MenuItem key={r.id} value={r.id}>
+          <MenuItem key={r.id} value={r.id} disabled={!isLanguageSelectable(r)}>
             {r.nativeLabel && r.nativeLabel !== r.label
               ? `${r.label} · ${r.nativeLabel}`
               : r.label}

@@ -29,7 +29,7 @@ export function CorporateMemberTableToolbar({ filters, onResetPage }) {
           fullWidth
           value={filters.state.name}
           onChange={handleFilterName}
-          placeholder="Search name, email, company code..."
+          placeholder="Search company, company code, HR name or email..."
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">

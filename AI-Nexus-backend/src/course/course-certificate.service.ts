@@ -21,9 +21,9 @@ import { SalesforceBadgeService } from '../auth/salesforce-badge.service';
 import { UserEntity } from '../user/users.entity';
 import { buildCourseCertificatePdf } from './utils/certificate-pdf.util';
 import {
-  CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
   mergeCertificateTemplateIntoInput,
   resolveCertificateProgrammeLevel,
+  resolveCertificateProgrammeTitle,
 } from './utils/certificate-pdf-shared.util';
 
 /** LinkedIn share text cannot use HTML/markdown — approximate bold with Mathematical Bold Unicode. */
@@ -835,6 +835,7 @@ export class CourseCertificateService {
   private async buildProgrammeTranscript(
     userId: string,
     programId: string,
+    programmeTitle: string,
   ): Promise<CertificateTranscriptModule[]> {
     const courses = await this.courseRepository.find({
       where: { programId, isBundle: false },
@@ -855,7 +856,7 @@ export class CourseCertificateService {
       const courseModules = await this.buildCourseTranscript(
         userId,
         course.id,
-        CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
+        programmeTitle,
       );
       transcript.push(
         ...courseModules
@@ -863,7 +864,7 @@ export class CourseCertificateService {
           .map((module) => ({
             ...module,
             pillarIndex,
-            courseTitle: CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
+            courseTitle: programmeTitle,
           })),
       );
     }
@@ -940,11 +941,13 @@ export class CourseCertificateService {
     const visibility = await this.appSettingsService.getCredentialVisibilitySettings();
     const hideAllCertificates = Boolean(visibility.hideAllCertificates);
     const hideAllBadges = Boolean(visibility.hideAllBadges);
+    const certTemplate = await this.appSettingsService.getCertificateTemplateForPdf();
+    const programmeTitle = resolveCertificateProgrammeTitle(certTemplate);
 
     return Promise.all(
       visibleRows.map(async (row) => {
         const courseTitle = row.programId
-          ? CERTIFICATE_PROGRAMME_DISPLAY_TITLE
+          ? programmeTitle
           : row.course?.title || 'Untitled Course';
         const learnerName =
           `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() ||
@@ -981,7 +984,7 @@ export class CourseCertificateService {
           createdAt: row.createdAt,
           courseTitle,
           programTitle: row.programId
-            ? CERTIFICATE_PROGRAMME_DISPLAY_TITLE.replace(/\s+/g, ' ')
+            ? programmeTitle.replace(/\s+/g, ' ')
             : '',
           marketData: row.course?.marketData || '',
           learnerName,
@@ -1010,7 +1013,7 @@ export class CourseCertificateService {
         const [cpe, transcript] = await Promise.all([
           this.resolveCertificateCpeHours(userId, row),
           row.programId
-            ? this.buildProgrammeTranscript(userId, row.programId)
+            ? this.buildProgrammeTranscript(userId, row.programId, programmeTitle)
             : this.buildCourseTranscript(userId, row.courseId, courseTitle),
         ]);
         const completedModules = transcript.filter((module) => module.isModuleComplete);
@@ -1037,18 +1040,18 @@ export class CourseCertificateService {
       throw new NotFoundException('Certificate not found');
     }
 
-    const courseTitle = row.programId
-      ? CERTIFICATE_PROGRAMME_DISPLAY_TITLE
-      : row.course?.title || 'Untitled Course';
-
-    const [cpe, transcript, publicSettings, certTemplate] = await Promise.all([
+    const [cpe, publicSettings, certTemplate] = await Promise.all([
       this.resolveCertificateCpeHours(row.userId, row),
-      row.programId
-        ? this.buildProgrammeTranscript(row.userId, row.programId)
-        : this.buildCourseTranscript(row.userId, row.courseId, courseTitle),
       this.appSettingsService.getPublicSettings(),
       this.appSettingsService.getCertificateTemplateForPdf(),
     ]);
+    const programmeTitle = resolveCertificateProgrammeTitle(certTemplate);
+    const courseTitle = row.programId
+      ? programmeTitle
+      : row.course?.title || 'Untitled Course';
+    const transcript = row.programId
+      ? await this.buildProgrammeTranscript(row.userId, row.programId, programmeTitle)
+      : await this.buildCourseTranscript(row.userId, row.courseId, courseTitle);
 
     const learnerName =
       `${row.user?.firstname || ''} ${row.user?.lastname || ''}`.trim() ||

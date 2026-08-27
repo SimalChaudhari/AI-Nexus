@@ -31,6 +31,12 @@ const QUICK_ACTIONS = [
     color: 'info',
   },
   {
+    title: 'Weekly Metrics',
+    icon: 'solar:chart-2-bold-duotone',
+    path: paths.admin.weeklyMetrics,
+    color: 'secondary',
+  },
+  {
     title: 'Settings',
     icon: 'solar:settings-bold-duotone',
     path: paths.admin.settings,

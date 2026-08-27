@@ -62,7 +62,11 @@ export function OverviewAppView() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([getDashboardStats(), getDashboardRecentOrders(), getDashboardTopRatedCourses()])
+    Promise.all([
+      getDashboardStats().catch(() => null),
+      getDashboardRecentOrders().catch(() => []),
+      getDashboardTopRatedCourses().catch(() => []),
+    ])
       .then(([statsData, ordersData, topCourses]) => {
         if (!cancelled) {
           setStats(statsData || null);

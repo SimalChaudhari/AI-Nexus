@@ -44,8 +44,10 @@ export type BuildCertificatePdfInput = {
   titleLine2Right?: string;
   awardedToLabel?: string;
   sessionLabel?: string;
-  /** Programme track shown above Cat 5 CPE hours: AI Fluency or AI Champion Group. */
+  /** Programme track shown above Cat 5 CPE hours: AI Proficient or AI Champion. */
   programmeLevel?: string;
+  /** Programme name on the certificate (supports a second line). */
+  programmeTitle?: string;
   cpeSectionLabel?: string;
   issuerName?: string;
   signatoryName?: string;
@@ -65,13 +67,14 @@ export const CERTIFICATE_TEMPLATE_DEFAULTS = {
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   transcriptTitle: 'AI FLUENCY',
+  programmeTitle: 'AI Fluency\n(AIxAccountancy)',
 } as const;
 
 /** Programme name stamped on certificate + transcript — same copy for AI Nexus and International. */
-export const CERTIFICATE_PROGRAMME_DISPLAY_TITLE = 'AI Fluency\nAIX Accountancy';
-export const CERTIFICATE_PROGRAMME_LEVEL_FLUENCY = 'AI Fluency';
+export const CERTIFICATE_PROGRAMME_DISPLAY_TITLE = CERTIFICATE_TEMPLATE_DEFAULTS.programmeTitle;
+export const CERTIFICATE_PROGRAMME_LEVEL_FLUENCY = 'AI Proficient';
 export const CERTIFICATE_PROGRAMME_LEVEL_CHAMPION = 'AI Champion';
-/** Earned CPE below this is AI Fluency; 30 hours or more is AI Champion. */
+/** Earned CPE below this is AI Proficient; 30 hours or more is AI Champion. */
 export const CERTIFICATE_CHAMPION_CPE_HOURS_THRESHOLD = 30;
 
 export function resolveCertificateProgrammeLevel(earnedCpeHours?: number | null): string {
@@ -95,6 +98,7 @@ export type CertificateTemplatePdfSettings = Partial<
     | 'signatoryTitle'
     | 'issuerName'
     | 'transcriptTitle'
+    | 'programmeTitle'
     | 'logoUrls'
     | 'signatureUrl'
   >
@@ -117,6 +121,30 @@ function pickTemplateText(
 ): string {
   const cleaned = String(value ?? '').trim();
   return cleaned || fallback;
+}
+
+function normalizeProgrammeTitleKey(value: string | null | undefined): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+const KNOWN_PROGRAMME_DISPLAY_TITLES = new Set(
+  [
+    CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
+    'AI Fluency\nAIX Accountancy',
+    'AI Fluency AIX Accountancy',
+    'AI Fluency\n(AI×Accountancy)',
+    'AI Fluency (AI×Accountancy)',
+    'AI Fluency (AIxAccountancy)',
+  ].map((title) => normalizeProgrammeTitleKey(title)),
+);
+
+export function resolveCertificateProgrammeTitle(
+  template?: Pick<CertificateTemplatePdfSettings, 'programmeTitle'> | null,
+): string {
+  return pickTemplateText(template?.programmeTitle, CERTIFICATE_PROGRAMME_DISPLAY_TITLE);
 }
 
 export function mergeCertificateTemplateIntoInput(
@@ -166,6 +194,13 @@ export function mergeCertificateTemplateIntoInput(
       input.transcriptTitle ?? t.transcriptTitle,
       CERTIFICATE_TEMPLATE_DEFAULTS.transcriptTitle,
     ),
+    programmeTitle: pickTemplateText(
+      input.programmeTitle ?? t.programmeTitle,
+      CERTIFICATE_TEMPLATE_DEFAULTS.programmeTitle,
+    ),
+    courseTitle: KNOWN_PROGRAMME_DISPLAY_TITLES.has(normalizeProgrammeTitleKey(input.courseTitle))
+      ? pickTemplateText(t.programmeTitle, CERTIFICATE_PROGRAMME_DISPLAY_TITLE)
+      : input.courseTitle,
     logoUrls,
     signatureUrl:
       input.signatureUrl != null && String(input.signatureUrl).trim()

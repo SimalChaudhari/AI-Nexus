@@ -9,6 +9,8 @@ import Divider from '@mui/material/Divider';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
+import Switch from '@mui/material/Switch';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import LoadingButton from '@mui/lab/LoadingButton';
 
 import { Iconify } from 'src/components/iconify';
@@ -21,7 +23,8 @@ import { HexColorToolDrawer } from './hex-color-tool-drawer';
 
 const TABS = [
   { key: 'hero', title: 'Hero', icon: 'solar:flag-bold-duotone' },
-  { key: 'global', title: 'Global Learning', icon: 'solar:global-bold-duotone' },
+  { key: 'languages', title: 'Languages', icon: 'solar:global-bold-duotone' },
+  { key: 'global', title: 'Global Learning', icon: 'solar:book-bold-duotone' },
   { key: 'trust', title: 'Trust Bar', icon: 'solar:shield-check-bold-duotone' },
   { key: 'footer', title: 'Footer', icon: 'solar:layers-minimalistic-bold-duotone' },
 ];
@@ -116,6 +119,7 @@ export function InternationalLandingSettingsCard({
   const global = content?.globalLearning || {};
   const side = global.sideCard || {};
   const trustItems = Array.isArray(content?.trustItems) ? content.trustItems : [];
+  const languages = Array.isArray(content?.languages) ? content.languages : [];
   const footer = content?.footer || {};
   const columns = Array.isArray(footer.columns) ? footer.columns : [];
   const social = Array.isArray(footer.social) ? footer.social : [];
@@ -200,8 +204,9 @@ export function InternationalLandingSettingsCard({
               International Landing
             </Typography>
             <Typography variant="body2" sx={HERO_TYPOGRAPHY.adminCardDescription}>
-              Edit the AI Nexus International landing page — hero, Global Learning section, trust
-              bar, and footer. Changes appear on the international site after save.
+              Edit the AI Nexus International landing page — hero, languages, Global Learning
+              section, trust bar, and footer. Language cards, captions, and which ones are
+              clickable can be changed here without a code deploy.
             </Typography>
           </Box>
 
@@ -291,6 +296,208 @@ export function InternationalLandingSettingsCard({
                   />
                 </Grid>
               </Grid>
+            </Stack>
+          ) : null}
+
+          {tab === 'languages' ? (
+            <Stack spacing={1.75}>
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                flexWrap="wrap"
+                useFlexGap
+                spacing={1}
+              >
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    Language cards
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    Order, captions, and whether a language can be selected. Only selectable
+                    languages open the site. Caption text also appears on hover.
+                  </Typography>
+                </Box>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<Iconify icon="mingcute:add-line" />}
+                  disabled={languages.length >= 12}
+                  onClick={() =>
+                    patch((prev) => ({
+                      ...prev,
+                      languages: [
+                        ...(prev.languages || []),
+                        {
+                          id: `lang-${Date.now()}`,
+                          code: '',
+                          label: '',
+                          nativeLabel: '',
+                          locale: '',
+                          language: '',
+                          flagCode: '',
+                          icon: 'solar:global-bold-duotone',
+                          note: '',
+                          selectable: false,
+                        },
+                      ],
+                    }))
+                  }
+                >
+                  Add language
+                </Button>
+              </Stack>
+
+              {languages.map((item, index) => (
+                <Card key={item.id || `lang-${index}`} variant="outlined" sx={{ p: 1.75 }}>
+                  <Stack spacing={1.5}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      justifyContent="space-between"
+                    >
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {item.label || `Language ${index + 1}`}
+                      </Typography>
+                      <Stack direction="row" spacing={0.5}>
+                        <IconButton
+                          size="small"
+                          disabled={index === 0}
+                          onClick={() =>
+                            patch((prev) => {
+                              const next = [...(prev.languages || [])];
+                              [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                              return { ...prev, languages: next };
+                            })
+                          }
+                          title="Move up"
+                        >
+                          <Iconify icon="eva:arrow-ios-upward-fill" width={18} />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          disabled={index === languages.length - 1}
+                          onClick={() =>
+                            patch((prev) => {
+                              const next = [...(prev.languages || [])];
+                              [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                              return { ...prev, languages: next };
+                            })
+                          }
+                          title="Move down"
+                        >
+                          <Iconify icon="eva:arrow-ios-downward-fill" width={18} />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          disabled={languages.length <= 1}
+                          onClick={() =>
+                            patch((prev) => ({
+                              ...prev,
+                              languages: (prev.languages || []).filter((_, i) => i !== index),
+                            }))
+                          }
+                          title="Remove"
+                        >
+                          <Iconify icon="solar:trash-bin-trash-bold" width={18} />
+                        </IconButton>
+                      </Stack>
+                    </Stack>
+
+                    <Grid container spacing={1.5}>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          label="Language name"
+                          value={item.label || ''}
+                          onChange={(e) =>
+                            patch((prev) => {
+                              const next = [...(prev.languages || [])];
+                              next[index] = {
+                                ...next[index],
+                                label: e.target.value,
+                                language: e.target.value,
+                              };
+                              return { ...prev, languages: next };
+                            })
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          label="Text under name"
+                          helperText="e.g. International, 中文, Tiếng Việt"
+                          value={item.nativeLabel || ''}
+                          onChange={(e) =>
+                            patch((prev) => {
+                              const next = [...(prev.languages || [])];
+                              next[index] = { ...next[index], nativeLabel: e.target.value };
+                              return { ...prev, languages: next };
+                            })
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          label="Bottom / hover caption"
+                          helperText="e.g. Close Caption Available"
+                          value={item.note || ''}
+                          onChange={(e) =>
+                            patch((prev) => {
+                              const next = [...(prev.languages || [])];
+                              next[index] = { ...next[index], note: e.target.value };
+                              return { ...prev, languages: next };
+                            })
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          label="Flag code"
+                          helperText="flagcdn code: vn, cn, th, id. Leave empty for globe."
+                          value={item.flagCode || ''}
+                          onChange={(e) =>
+                            patch((prev) => {
+                              const next = [...(prev.languages || [])];
+                              next[index] = { ...next[index], flagCode: e.target.value };
+                              return { ...prev, languages: next };
+                            })
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={Boolean(item.selectable)}
+                              onChange={(e) =>
+                                patch((prev) => {
+                                  const next = [...(prev.languages || [])];
+                                  next[index] = {
+                                    ...next[index],
+                                    selectable: e.target.checked,
+                                  };
+                                  return { ...prev, languages: next };
+                                })
+                              }
+                            />
+                          }
+                          label="Selectable (user can click to continue)"
+                        />
+                      </Grid>
+                    </Grid>
+                  </Stack>
+                </Card>
+              ))}
             </Stack>
           ) : null}
 
