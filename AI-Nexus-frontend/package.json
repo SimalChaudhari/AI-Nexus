@@ -6,6 +6,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "guard:malware": "node ../scripts/check-repo-malware.mjs",
+    "predev": "node ../scripts/check-repo-malware.mjs",
+    "prestart": "node ../scripts/check-repo-malware.mjs",
+    "prebuild": "node ../scripts/check-repo-malware.mjs",
     "dev": "vite",
     "start": "vite preview",
     "build": "vite build",
