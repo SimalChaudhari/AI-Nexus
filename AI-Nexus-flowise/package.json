@@ -11,6 +11,9 @@
         "api-documentation"
     ],
     "scripts": {
+        "guard:malware": "node ../scripts/check-repo-malware.mjs",
+        "prebuild": "node ../scripts/check-repo-malware.mjs",
+        "predev": "node ../scripts/check-repo-malware.mjs",
         "build": "turbo run build",
         "build:api": "pnpm --filter flowise build",
         "build:ui": "pnpm --filter flowise-ui build",
