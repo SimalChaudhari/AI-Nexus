@@ -44,19 +44,20 @@ export type BuildCertificatePdfInput = {
   titleLine2Right?: string;
   awardedToLabel?: string;
   sessionLabel?: string;
+  /** Programme track shown above Cat 5 CPE hours: AI Fluency or AI Champion Group. */
+  programmeLevel?: string;
   cpeSectionLabel?: string;
   issuerName?: string;
   signatoryName?: string;
   signatoryTitle?: string;
   /** Transcript page programme title (supports new lines). */
   transcriptTitle?: string;
-  transcriptSubtitle?: string;
 };
 
 export const CERTIFICATE_TEMPLATE_DEFAULTS = {
   titleLine1: 'CERTIFICATE',
   titleLine2Left: 'OF',
-  titleLine2Right: 'ATTENDANCE',
+  titleLine2Right: 'PARTICIPATION',
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
@@ -64,8 +65,22 @@ export const CERTIFICATE_TEMPLATE_DEFAULTS = {
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   transcriptTitle: 'AI FLUENCY',
-  transcriptSubtitle: 'A programme under the GovernWell Series by the Charity Council of Singapore',
 } as const;
+
+/** Programme name stamped on certificate + transcript — same copy for AI Nexus and International. */
+export const CERTIFICATE_PROGRAMME_DISPLAY_TITLE = 'AI Fluency\nAIX Accountancy';
+export const CERTIFICATE_PROGRAMME_LEVEL_FLUENCY = 'AI Fluency';
+export const CERTIFICATE_PROGRAMME_LEVEL_CHAMPION = 'AI Champion';
+/** Earned CPE below this is AI Fluency; 30 hours or more is AI Champion. */
+export const CERTIFICATE_CHAMPION_CPE_HOURS_THRESHOLD = 30;
+
+export function resolveCertificateProgrammeLevel(earnedCpeHours?: number | null): string {
+  const hours = Number(earnedCpeHours);
+  if (Number.isFinite(hours) && hours >= CERTIFICATE_CHAMPION_CPE_HOURS_THRESHOLD) {
+    return CERTIFICATE_PROGRAMME_LEVEL_CHAMPION;
+  }
+  return CERTIFICATE_PROGRAMME_LEVEL_FLUENCY;
+}
 
 export type CertificateTemplatePdfSettings = Partial<
   Pick<
@@ -80,7 +95,6 @@ export type CertificateTemplatePdfSettings = Partial<
     | 'signatoryTitle'
     | 'issuerName'
     | 'transcriptTitle'
-    | 'transcriptSubtitle'
     | 'logoUrls'
     | 'signatureUrl'
   >
@@ -151,10 +165,6 @@ export function mergeCertificateTemplateIntoInput(
     transcriptTitle: pickTemplateText(
       input.transcriptTitle ?? t.transcriptTitle,
       CERTIFICATE_TEMPLATE_DEFAULTS.transcriptTitle,
-    ),
-    transcriptSubtitle: pickTemplateText(
-      input.transcriptSubtitle ?? t.transcriptSubtitle,
-      CERTIFICATE_TEMPLATE_DEFAULTS.transcriptSubtitle,
     ),
     logoUrls,
     signatureUrl:
@@ -421,7 +431,9 @@ export function flattenTranscriptModules(
   const groupByKey = new Map<string, Group>();
 
   modules.forEach((module) => {
-    const courseTitle = String(module.courseTitle || '').trim();
+    const courseTitle = String(module.courseTitle || '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const pillarIndex =
       module.pillarIndex != null && Number(module.pillarIndex) > 0
         ? Number(module.pillarIndex)

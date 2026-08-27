@@ -38,6 +38,8 @@ export class UpdateIntlMembershipSettingsDto {
   countryPricing?: Record<string, {
     basePrice?: number | null;
     discountPrice?: number | null;
+    studentBasePrice?: number | null;
+    studentDiscountPrice?: number | null;
     active?: boolean;
     promoCode?: string | null;
   }>;

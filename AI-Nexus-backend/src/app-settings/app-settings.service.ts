@@ -357,7 +357,7 @@ const CERTIFICATE_TEMPLATE_LOGOS_MAX = 3;
 export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS: CertificateTemplateSettings = {
   titleLine1: 'CERTIFICATE',
   titleLine2Left: 'OF',
-  titleLine2Right: 'ATTENDANCE',
+  titleLine2Right: 'PARTICIPATION',
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
@@ -365,7 +365,6 @@ export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS: CertificateTemplateSettings 
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   transcriptTitle: 'AI FLUENCY',
-  transcriptSubtitle: 'A programme under the GovernWell Series by the Charity Council of Singapore',
   logoUrls: ['', '', ''],
   signatureUrl: null,
 };
@@ -776,9 +775,13 @@ export class AppSettingsService {
       titleLine2Left:
         this.cleanText(source.titleLine2Left ?? prev.titleLine2Left, 40) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Left,
-      titleLine2Right:
-        this.cleanText(source.titleLine2Right ?? prev.titleLine2Right, 80) ||
-        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right,
+      titleLine2Right: (() => {
+        const raw = this.cleanText(source.titleLine2Right ?? prev.titleLine2Right, 80);
+        if (!raw || raw === 'ATTENDANCE') {
+          return DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right;
+        }
+        return raw;
+      })(),
       awardedToLabel:
         this.cleanText(source.awardedToLabel ?? prev.awardedToLabel, 120) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.awardedToLabel,
@@ -798,9 +801,6 @@ export class AppSettingsService {
       transcriptTitle:
         this.cleanText(source.transcriptTitle ?? prev.transcriptTitle, 160) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptTitle,
-      transcriptSubtitle:
-        this.cleanText(source.transcriptSubtitle ?? prev.transcriptSubtitle, 240) ||
-        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptSubtitle,
       logoUrls,
       signatureUrl:
         signatureRaw == null || signatureRaw === ''

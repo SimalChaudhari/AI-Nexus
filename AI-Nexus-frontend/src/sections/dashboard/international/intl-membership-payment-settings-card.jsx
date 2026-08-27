@@ -54,13 +54,11 @@ export function IntlMembershipPaymentSettingsCard({
   const preview = useMemo(() => {
     const full = Number(values.baseAmountSgd) || 0;
     const student = Number(values.studentAmountSgd) || 0;
-    const promo = Number(values.voucherDiscountAmountSgd) || 0;
     return {
       full: Number(full.toFixed(2)),
       student: Number(student.toFixed(2)),
-      promo: Number(promo.toFixed(2)),
     };
-  }, [values.baseAmountSgd, values.studentAmountSgd, values.voucherDiscountAmountSgd]);
+  }, [values.baseAmountSgd, values.studentAmountSgd]);
 
   const updateField = (field, value) => {
     setPaymentSettings((prev) => ({
@@ -72,7 +70,6 @@ export function IntlMembershipPaymentSettingsCard({
   const handleSave = async () => {
     const full = Number(values.baseAmountSgd);
     const student = Number(values.studentAmountSgd);
-    const promo = Number(values.voucherDiscountAmountSgd);
     if (!Number.isFinite(full) || full <= 0) {
       toast.error('Full / Role amount (SGD) is required and must be greater than 0');
       return;
@@ -81,14 +78,10 @@ export function IntlMembershipPaymentSettingsCard({
       toast.error('Student amount (SGD) is required and must be greater than 0');
       return;
     }
-    if (!Number.isFinite(promo) || promo <= 0) {
-      toast.error('Promo payable amount (SGD) is required and must be greater than 0');
-      return;
-    }
     await onSave?.({
       baseAmountSgd: full,
       studentAmountSgd: student,
-      voucherDiscountAmountSgd: promo,
+      voucherDiscountAmountSgd: values.voucherDiscountAmountSgd,
       promoAmountsByCountry: values.promoAmountsByCountry || {},
     });
   };
@@ -139,22 +132,6 @@ export function IntlMembershipPaymentSettingsCard({
                 helperText="Full / Role plan fee"
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                size="small"
-                required
-                type="number"
-                label="Promo payable amount"
-                value={values.voucherDiscountAmountSgd ?? ''}
-                onChange={(event) => updateField('voucherDiscountAmountSgd', event.target.value)}
-                inputProps={{ min: 0.01, step: '0.01' }}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">{currency}</InputAdornment>,
-                }}
-                helperText="Fallback when a country has no exact promo amount"
-              />
-            </Grid>
           </Grid>
 
           <Stack
@@ -174,7 +151,7 @@ export function IntlMembershipPaymentSettingsCard({
                 Student
               </Typography>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                {currency} {preview.student.toFixed(2)}
+                {preview.student.toFixed(2)} {currency}
               </Typography>
             </Box>
             <Divider
@@ -187,20 +164,7 @@ export function IntlMembershipPaymentSettingsCard({
                 Full / Role
               </Typography>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                {currency} {preview.full.toFixed(2)}
-              </Typography>
-            </Box>
-            <Divider
-              flexItem
-              orientation="vertical"
-              sx={{ display: { xs: 'none', sm: 'block' } }}
-            />
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                With promo
-              </Typography>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                {currency} {preview.promo.toFixed(2)}
+                {preview.full.toFixed(2)} {currency}
               </Typography>
             </Box>
           </Stack>

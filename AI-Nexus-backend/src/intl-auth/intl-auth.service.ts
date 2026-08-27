@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { Repository } from 'typeorm';
 
+import { VoucherCodeEntity } from '../affiliate/voucher-code.entity';
 import { resolveCountryCode, resolveCurrencyForCountry } from '../intl-payment/intl-currency';
 import { IntlLoginDto, IntlRegisterDto } from './intl-auth.dto';
 import {
@@ -36,8 +37,40 @@ export class IntlAuthService {
   constructor(
     @InjectRepository(InternationalUserEntity)
     private readonly userRepository: Repository<InternationalUserEntity>,
+    @InjectRepository(VoucherCodeEntity)
+    private readonly voucherCodeRepository: Repository<VoucherCodeEntity>,
     private readonly jwtService: JwtService,
   ) {}
+
+  private async resolveRegisterMembershipType(
+    dto: IntlRegisterDto,
+  ): Promise<InternationalMembershipType> {
+    const promoCode = String(dto.promoCode || '').trim().toUpperCase();
+    if (promoCode) {
+      const voucher = await this.voucherCodeRepository
+        .createQueryBuilder('v')
+        .where('UPPER(v.code) = :code', { code: promoCode })
+        .andWhere('v.site = :site', { site: 'international' })
+        .andWhere('v.isActive = true')
+        .getOne();
+      if (voucher) {
+        const expired =
+          voucher.expiresAt != null && new Date(voucher.expiresAt).getTime() < Date.now();
+        const overLimit =
+          voucher.maxRedemptions != null
+          && Number(voucher.redemptionCount || 0) >= Number(voucher.maxRedemptions);
+        if (!expired && !overLimit) {
+          if (
+            voucher.membershipType === 'student'
+            || voucher.membershipType === 'full'
+          ) {
+            return normalizeMembershipType(voucher.membershipType);
+          }
+        }
+      }
+    }
+    return normalizeMembershipType(dto.membershipType);
+  }
 
   async register(dto: IntlRegisterDto) {
     if (!dto.paymentConsent) {
@@ -72,7 +105,7 @@ export class IntlAuthService {
         existing.countryCode = countryCode || null;
         existing.currency = resolveCurrencyForCountry(countryOfResidence || '');
         existing.promoCode = String(dto.promoCode || '').trim() || null;
-        existing.membershipType = normalizeMembershipType(dto.membershipType);
+        existing.membershipType = await this.resolveRegisterMembershipType(dto);
         existing.paymentStatus = InternationalUserPaymentStatus.Unpaid;
         const saved = await this.userRepository.save(existing);
         return {
@@ -125,7 +158,7 @@ export class IntlAuthService {
       countryCode: countryCode || null,
       currency: resolveCurrencyForCountry(countryOfResidence || ''),
       promoCode: String(dto.promoCode || '').trim() || null,
-      membershipType: normalizeMembershipType(dto.membershipType),
+      membershipType: await this.resolveRegisterMembershipType(dto),
       isVerified: false,
       paymentStatus: InternationalUserPaymentStatus.Unpaid,
       status: InternationalUserStatus.PendingPayment,

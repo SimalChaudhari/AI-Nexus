@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { VoucherCodeEntity } from '../affiliate/voucher-code.entity';
 import { UserEntity } from '../user/users.entity';
 import { IntlAuthController } from './intl-auth.controller';
 import { IntlAuthInitService } from './intl-auth-init.service';
@@ -12,7 +13,7 @@ import { InternationalUserEntity } from './international-user.entity';
 @Module({
   imports: [
     // UserEntity is required by SessionGuard used on admin list routes.
-    TypeOrmModule.forFeature([InternationalUserEntity, UserEntity]),
+    TypeOrmModule.forFeature([InternationalUserEntity, UserEntity, VoucherCodeEntity]),
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: {},

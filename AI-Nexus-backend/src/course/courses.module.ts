@@ -25,6 +25,9 @@ import { CourseWatchProgressInitService } from './course-watch-progress-init.ser
 import { CourseSectionWatchProgressEntity } from './course-section-watch-progress.entity';
 import { CourseSectionWatchProgressService } from './course-section-watch-progress.service';
 import { CourseSectionWatchProgressInitService } from './course-section-watch-progress-init.service';
+import { SalesforceCpeComplianceSyncEntity } from './salesforce-cpe-compliance-sync.entity';
+import { SalesforceCpeComplianceService } from './salesforce-cpe-compliance.service';
+import { SalesforceCpeComplianceSyncInitService } from './salesforce-cpe-compliance-sync-init.service';
 import { JwtModule } from '@nestjs/jwt';
 import { LocalStorageService } from '../service/local-storage.service';
 import { SpotlightrService } from '../service/spotlightr.service';
@@ -67,15 +70,15 @@ import { AdminUserProgressService } from './admin-user-progress.service';
         AssessmentEvaluationModule,
         IntlPathwayModule,
         SsoModule,
-        TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseQuestionAssignmentSubmissionEntity, CourseCertificateEntity, CategoryEntity, ProgramEntity, CourseOptionEntity, ReviewEntity]),
+        TypeOrmModule.forFeature([CourseEntity, CourseGroupEntity, CourseModuleEntity, CourseModuleSectionEntity, CourseWatchProgressEntity, CourseSectionWatchProgressEntity, CourseFavoriteEntity, CourseSectionFavoriteEntity, CourseEnrollmentEntity, UserEntity, CourseQuestionBankEntity, CourseQuestionBankAttemptEntity, CourseQuestionAssignmentSubmissionEntity, CourseCertificateEntity, CategoryEntity, ProgramEntity, CourseOptionEntity, ReviewEntity, SalesforceCpeComplianceSyncEntity]),
         JwtModule.register({
             secret: process.env.JWT_SECRET,
             signOptions: {},
         }),
     ],
-    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseAssignmentGradingService, AssignmentGradingRouterService, CourseQuizAssessmentProgressService, CourseCertificateService, CourseLearnerProgressCleanupService, AdminUserProgressService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, InternationalAiFluencyPathwayService, LocalStorageService, SpotlightrService, VideoDurationService],
+    providers: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseAssignmentGradingService, AssignmentGradingRouterService, CourseQuizAssessmentProgressService, CourseCertificateService, CourseLearnerProgressCleanupService, AdminUserProgressService, CoursesInitService, CourseModuleInitService, CourseModuleSectionInitService, CourseWatchProgressInitService, CourseSectionWatchProgressInitService, CourseEnrollmentInitService, CourseQuestionBankInitService, CourseQuestionBankAttemptInitService, CourseQuestionAssignmentInitService, CourseCertificateInitService, CourseOptionInitService, InternationalAiFluencyPathwayService, SalesforceCpeComplianceService, SalesforceCpeComplianceSyncInitService, LocalStorageService, SpotlightrService, VideoDurationService],
     controllers: [CourseController],
-    exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseQuizAssessmentProgressService, CourseCertificateService, CourseLearnerProgressCleanupService, AdminUserProgressService],
+    exports: [CourseService, CourseModuleService, CourseModuleSectionService, CourseWatchProgressService, CourseSectionWatchProgressService, CourseFavoriteService, CourseSectionFavoriteService, CourseEnrollmentService, CourseQuestionBankService, CourseQuizAssessmentProgressService, CourseCertificateService, CourseLearnerProgressCleanupService, AdminUserProgressService, SalesforceCpeComplianceService],
 })
 export class CourseModule {}
 

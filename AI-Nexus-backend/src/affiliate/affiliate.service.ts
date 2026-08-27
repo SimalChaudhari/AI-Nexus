@@ -14,7 +14,7 @@ import { AppSettingsService } from '../app-settings/app-settings.service';
 import { AffiliateCodeEntity } from './affiliate-code.entity';
 import { AffiliateClickEntity } from './affiliate-click.entity';
 import { AffiliateSaleEntity, AffiliateSaleStatus } from './affiliate-sale.entity';
-import { VoucherCodeEntity, VoucherCodeSite } from './voucher-code.entity';
+import { VoucherCodeEntity, VoucherCodeSite, VoucherMembershipType } from './voucher-code.entity';
 import { AffiliateSignupCheckoutDto, ValidateAffiliateCodeDto } from './affiliate.dto';
 import { resolveCountryPricing, resolveCountryPromoAmount } from '../intl-payment/intl-promo-countries';
 import { convertDefaultSgdToCountryCurrency } from '../intl-payment/intl-pricing';
@@ -33,6 +33,8 @@ export type AffiliatePricingResult = {
   voucherMessage: string | null;
   appliedCode: string | null;
   codeType: AffiliateCodeType;
+  /** International vouchers assign Student or Full / Role. */
+  membershipType: VoucherMembershipType | null;
   originalAmount: number;
   payableAmount: number;
   currency: string;
@@ -81,6 +83,20 @@ export class AffiliateService {
   normalizeVoucherSite(value?: string | null): VoucherCodeSite {
     const raw = String(value || '').trim().toLowerCase();
     return raw === 'international' ? 'international' : 'payment';
+  }
+
+  normalizeVoucherMembershipType(
+    value?: string | null,
+    site?: VoucherCodeSite | string | null,
+  ): VoucherMembershipType | null {
+    if (this.normalizeVoucherSite(site) !== 'international') {
+      return null;
+    }
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'student') return 'student';
+    if (raw === 'full') return 'full';
+    if (raw === 'both') return 'both';
+    return null;
   }
 
   /**
@@ -141,11 +157,13 @@ export class AffiliateService {
   }
 
   private serializeVoucher(row: VoucherCodeEntity) {
+    const site = this.normalizeVoucherSite(row.site);
     return {
       id: row.id,
       code: row.code,
-      site: this.normalizeVoucherSite(row.site),
+      site,
       label: row.label,
+      membershipType: this.normalizeVoucherMembershipType(row.membershipType, site),
       isActive: row.isActive,
       expiresAt: row.expiresAt,
       maxRedemptions: row.maxRedemptions,
@@ -168,6 +186,7 @@ export class AffiliateService {
     code?: string | null;
     label?: string | null;
     site?: string | null;
+    membershipType?: string | null;
     isActive?: boolean;
     maxRedemptions?: number | null;
     expiresAt?: string | Date | null;
@@ -194,12 +213,14 @@ export class AffiliateService {
       );
     }
 
+    const membershipType = this.requireInternationalMembershipType(input.membershipType, site);
     const label = String(input.label || '').trim() || `Admin promo ${code}`;
     const saved = await this.voucherCodeRepo.save(
       this.voucherCodeRepo.create({
         code,
         site,
         label,
+        membershipType,
         isActive: input.isActive !== false,
         expiresAt: this.parseExpiresAt(input.expiresAt),
         maxRedemptions: this.parseMaxRedemptions(input.maxRedemptions),
@@ -214,6 +235,7 @@ export class AffiliateService {
     input: {
       code?: string | null;
       label?: string | null;
+      membershipType?: string | null;
       isActive?: boolean;
       maxRedemptions?: number | null;
       expiresAt?: string | Date | null;
@@ -253,6 +275,11 @@ export class AffiliateService {
       const label = String(input.label || '').trim();
       row.label = label || `Admin promo ${row.code}`;
     }
+    if (input.membershipType !== undefined) {
+      row.membershipType = this.requireInternationalMembershipType(input.membershipType, site);
+    } else if (site !== 'international') {
+      row.membershipType = null;
+    }
     if (typeof input.isActive === 'boolean') {
       row.isActive = input.isActive;
     }
@@ -266,6 +293,20 @@ export class AffiliateService {
     row.site = site;
     const saved = await this.voucherCodeRepo.save(row);
     return this.serializeVoucher(saved);
+  }
+
+  private requireInternationalMembershipType(
+    value?: string | null,
+    site?: VoucherCodeSite | string | null,
+  ): VoucherMembershipType | null {
+    if (this.normalizeVoucherSite(site) !== 'international') {
+      return null;
+    }
+    const plan = this.normalizeVoucherMembershipType(value, 'international');
+    if (!plan) {
+      throw new BadRequestException('Select Student, Full / Role, or Both for this promo code.');
+    }
+    return plan;
   }
 
   private parseMaxRedemptions(value?: number | string | null): number | null {
@@ -335,11 +376,12 @@ export class AffiliateService {
     valid: boolean;
     code: string | null;
     message: string | null;
+    membershipType: VoucherMembershipType | null;
   }> {
     const normalized = this.normalizeCode(code);
     const site = this.normalizeVoucherSite(siteInput);
     if (!normalized) {
-      return { valid: false, code: null, message: null };
+      return { valid: false, code: null, message: null, membershipType: null };
     }
 
     const row = await this.voucherCodeRepo
@@ -349,22 +391,40 @@ export class AffiliateService {
       .getOne();
 
     if (!row) {
-      return { valid: false, code: normalized, message: 'Voucher code does not exist.' };
+      return { valid: false, code: normalized, message: 'Voucher code does not exist.', membershipType: null };
     }
     if (!row.isActive) {
-      return { valid: false, code: normalized, message: 'Voucher code is inactive.' };
+      return { valid: false, code: normalized, message: 'Voucher code is inactive.', membershipType: null };
     }
     if (this.isExpired(row.expiresAt)) {
-      return { valid: false, code: normalized, message: 'Voucher code has expired.' };
+      return { valid: false, code: normalized, message: 'Voucher code has expired.', membershipType: null };
     }
     if (
       row.maxRedemptions != null
       && Number(row.redemptionCount || 0) >= Number(row.maxRedemptions)
     ) {
-      return { valid: false, code: normalized, message: 'Voucher code has reached its redemption limit.' };
+      return { valid: false, code: normalized, message: 'Voucher code has reached its redemption limit.', membershipType: null };
     }
 
-    return { valid: true, code: normalized, message: 'Voucher code is valid.' };
+    return {
+      valid: true,
+      code: normalized,
+      message: 'Voucher code is valid.',
+      membershipType: this.normalizeVoucherMembershipType(row.membershipType, site) ||
+        (site === 'international' ? 'both' : null),
+    };
+  }
+
+  /** Plan assigned by a valid international promo. `both` means signup still chooses Student or Full. */
+  async getInternationalVoucherMembershipType(
+    code?: string | null,
+  ): Promise<VoucherMembershipType | null> {
+    const voucher = await this.validateVoucherCode(code, 'international');
+    if (!voucher.valid) return null;
+    if (voucher.membershipType === 'student' || voucher.membershipType === 'full') {
+      return voucher.membershipType;
+    }
+    return 'both';
   }
 
   async calculatePricing(dto: ValidateAffiliateCodeDto): Promise<AffiliatePricingResult> {
@@ -452,7 +512,7 @@ export class AffiliateService {
     }
 
     const affiliate = isInternational
-      ? { valid: false, code: null as string | null, message: null as string | null }
+      ? { valid: false, code: null as string | null, message: null as string | null, membershipType: null as VoucherMembershipType | null }
       : await this.validateAffiliateCode(affiliateCodeInput);
     const voucher = await this.validateVoucherCode(voucherCodeInput, voucherSite);
     const discountApplied = affiliate.valid || voucher.valid;
@@ -473,6 +533,11 @@ export class AffiliateService {
       voucherMessage: voucher.message,
       appliedCode,
       codeType,
+      membershipType: discountApplied && isInternational
+        ? (voucher.membershipType === 'student' || voucher.membershipType === 'full'
+          ? voucher.membershipType
+          : 'both')
+        : null,
       originalAmount: pricedOriginalAmount,
       payableAmount: discountApplied ? discountedAmount : pricedOriginalAmount,
       currency,

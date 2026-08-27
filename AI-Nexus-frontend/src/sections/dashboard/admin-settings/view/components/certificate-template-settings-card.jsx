@@ -21,14 +21,13 @@ const CENTER_LOGO_INDEX = 1;
 export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS = {
   titleLine1: 'CERTIFICATE',
   titleLine2Left: 'OF',
-  titleLine2Right: 'ATTENDANCE',
+  titleLine2Right: 'PARTICIPATION',
   awardedToLabel: 'has been awarded to',
   sessionLabel: 'for attending of the session',
   cpeSectionLabel: 'Cat 5 CPE Hours: {hours} Hour',
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   transcriptTitle: 'AI FLUENCY',
-  transcriptSubtitle: 'A programme under the GovernWell Series by the Charity Council of Singapore',
   logoUrls: ['', '', ''],
   signatureUrl: '',
 };
@@ -50,7 +49,10 @@ function normalizeSettings(data) {
   return {
     titleLine1: source.titleLine1 ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine1,
     titleLine2Left: source.titleLine2Left ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Left,
-    titleLine2Right: source.titleLine2Right ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right,
+    titleLine2Right:
+      source.titleLine2Right && source.titleLine2Right !== 'ATTENDANCE'
+        ? source.titleLine2Right
+        : DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.titleLine2Right,
     awardedToLabel: source.awardedToLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.awardedToLabel,
     sessionLabel: source.sessionLabel ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.sessionLabel,
     cpeSectionLabel:
@@ -60,8 +62,6 @@ function normalizeSettings(data) {
     signatoryTitle: source.signatoryTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryTitle,
     issuerName: source.issuerName ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.issuerName,
     transcriptTitle: source.transcriptTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptTitle,
-    transcriptSubtitle:
-      source.transcriptSubtitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptSubtitle,
     logoUrls,
     signatureUrl: resolvePreviewUrl(source.signatureUrl || ''),
   };
@@ -111,7 +111,6 @@ export function CertificateTemplateSettingsCard() {
         signatoryTitle: settings.signatoryTitle,
         issuerName: settings.issuerName,
         transcriptTitle: settings.transcriptTitle,
-        transcriptSubtitle: settings.transcriptSubtitle,
       };
       const result = await appSettingsService.updateCertificateTemplateSettings(payload);
       setSettings(normalizeSettings(result?.certificateTemplateSettings || result));
@@ -216,7 +215,7 @@ export function CertificateTemplateSettingsCard() {
       {
         key: 'titleLine2Right',
         label: 'Title line 2 — right word',
-        helperText: 'Starts under the E (e.g. ATTENDANCE)',
+        helperText: 'Starts under the E (e.g. PARTICIPATION)',
       },
       {
         key: 'awardedToLabel',
@@ -247,13 +246,6 @@ export function CertificateTemplateSettingsCard() {
         key: 'transcriptTitle',
         label: 'Transcript programme title',
         helperText: 'Shown at the top of the transcript page. Press Enter for a second line.',
-        multiline: true,
-        minRows: 2,
-      },
-      {
-        key: 'transcriptSubtitle',
-        label: 'Transcript subtitle',
-        helperText: 'Smaller line under the programme title',
         multiline: true,
         minRows: 2,
       },

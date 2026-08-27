@@ -1,6 +1,7 @@
 import { resolveCountryCode, resolveCurrencyForCountry } from './intl-currency';
 import type { IntlFxService } from './intl-fx.service';
 import {
+  countriesAssignedToPromo,
   resolveCountryPricing,
   resolveCountryPromoAmount,
   type CountryPricingMap,
@@ -118,27 +119,48 @@ export async function resolveIntlMembershipPricing(
   );
   const appliedPromo = String(options.promoCode || '').trim().toUpperCase();
   const rowPromo = String(countryRow?.promoCode || '').trim().toUpperCase();
+  const assignedCountries = appliedPromo
+    ? countriesAssignedToPromo(options.countryPricing, appliedPromo)
+    : [];
+  const countryEligibleForPromo =
+    !appliedPromo
+    || assignedCountries.length === 0
+    || Boolean(countryCode && assignedCountries.includes(countryCode));
   const promoMatchesCountry =
-    !appliedPromo || !rowPromo || rowPromo === appliedPromo;
+    countryEligibleForPromo
+    && (!appliedPromo || !rowPromo || rowPromo === appliedPromo);
+
+  const planBasePrice =
+    membershipType === 'student' ? countryRow?.studentBasePrice : countryRow?.basePrice;
+  const planBaseCents =
+    membershipType === 'student'
+      ? countryRow?.studentBaseAmountCents
+      : countryRow?.baseAmountCents;
+  const planPromoPrice =
+    membershipType === 'student' ? countryRow?.studentDiscountPrice : countryRow?.discountPrice;
+  const planPromoCents =
+    membershipType === 'student'
+      ? countryRow?.studentDiscountAmountCents
+      : countryRow?.discountAmountCents;
 
   const exactBase =
-    countryRow?.basePrice != null
+    planBasePrice != null
       ? {
-          amount: countryRow.basePrice,
-          amountCents: countryRow.baseAmountCents,
-          currency: countryRow.currency || localCurrency,
+          amount: planBasePrice,
+          amountCents: planBaseCents || 0,
+          currency: countryRow?.currency || localCurrency,
           rate: 1,
         }
       : null;
   const exactPromo =
-    promoMatchesCountry && countryRow?.discountPrice != null
+    promoMatchesCountry && planPromoPrice != null
       ? {
-          amount: countryRow.discountPrice,
-          amountCents: countryRow.discountAmountCents,
-          currency: countryRow.currency || localCurrency,
+          amount: planPromoPrice,
+          amountCents: planPromoCents || 0,
+          currency: countryRow?.currency || localCurrency,
           rate: 1,
         }
-      : promoMatchesCountry && countryPromo
+      : promoMatchesCountry && membershipType !== 'student' && countryPromo
         ? {
             amount: countryPromo.amount,
             amountCents: countryPromo.amountCents,
@@ -173,7 +195,12 @@ export async function resolveIntlMembershipPricing(
     }
   }
 
-  const payable = promoApplied ? promo : base;
+  const roleHasCountryPromo = exactPromo != null;
+  const applyPromo =
+    promoApplied
+    && countryEligibleForPromo
+    && (roleHasCountryPromo || assignedCountries.length === 0);
+  const payable = applyPromo ? promo : base;
   const planLabel = membershipType === 'student' ? 'Student' : 'Full / Role';
 
   return {
@@ -184,15 +211,15 @@ export async function resolveIntlMembershipPricing(
     baseAmountSgd: planAmountSgd,
     baseAmount: base.amount,
     exchangeRate: exactBase ? 1 : convertedRate,
-    promoApplied,
+    promoApplied: applyPromo,
     totalAmount: payable.amount,
     totalAmountCents: payable.amountCents,
     voucherDiscountAmount: promo.amount,
-    promoFixed: promoApplied ? Boolean(exactPromo) : Boolean(exactBase),
-    itemName: promoApplied
+    promoFixed: applyPromo ? Boolean(exactPromo) : Boolean(exactBase),
+    itemName: applyPromo
       ? `AI Nexus International membership — ${planLabel} (promo)`
       : `AI Nexus International membership — ${planLabel}`,
-    itemDescription: promoApplied
+    itemDescription: applyPromo
       ? `${planLabel} international AI Fluency membership with promotional rate.`
       : `${planLabel} international AI Fluency membership. Access unlocks after payment succeeds.`,
   };
