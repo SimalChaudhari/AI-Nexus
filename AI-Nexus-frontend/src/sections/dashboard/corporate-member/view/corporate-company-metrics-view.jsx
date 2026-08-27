@@ -17,7 +17,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import InputAdornment from '@mui/material/InputAdornment';
 import TableContainer from '@mui/material/TableContainer';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { DatePicker } from '@mui/x-date-pickers';
 import { formHelperTextClasses } from '@mui/material/FormHelperText';
 import { alpha, useTheme } from '@mui/material/styles';
 import Grid from '@mui/material/Unstable_Grid2';

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
@@ -26,7 +27,7 @@ import globalLearningImage from 'src/assets/international/global-learning.png';
 import { CONFIG } from 'src/config-global';
 import { getBackendOrigin } from 'src/lib/env';
 import { IntlFooter } from '../intl-footer';
-import { INTL_REGIONS, setStoredIntlRegion } from '../intl-region';
+import { INTL_REGIONS, getLanguageNote, isLanguageSelectable, setStoredIntlRegion } from '../intl-region';
 import {
   INTL_LANDING_DEFAULTS,
   normalizeIntlLandingContent,
@@ -76,9 +77,12 @@ function resolveAssetUrl(url) {
 
 export function InternationalLandingView() {
   const router = useRouter();
-  const regions = INTL_REGIONS;
   const [content, setContent] = useState(() => normalizeIntlLandingContent(INTL_LANDING_DEFAULTS));
   const [navigatingId, setNavigatingId] = useState(null);
+  const regions =
+    Array.isArray(content.languages) && content.languages.length
+      ? content.languages
+      : INTL_REGIONS;
 
   useEffect(() => {
     let active = true;
@@ -92,7 +96,7 @@ export function InternationalLandingView() {
   }, []);
 
   const handleSelectRegion = (next) => {
-    if (navigatingId) return;
+    if (navigatingId || !isLanguageSelectable(next)) return;
     setNavigatingId(next?.id || 'pending');
     setStoredIntlRegion(next);
     router.push(paths.dashboard);
@@ -250,6 +254,184 @@ function HeroFullWidthBackdrop({ imageSrc }) {
   );
 }
 
+function LanguageCard({ region, navigatingId, onSelect }) {
+  if (!region) {
+    return <Box aria-hidden sx={{ minHeight: { xs: 124, sm: 136 }, visibility: 'hidden' }} />;
+  }
+
+  const isLoading = navigatingId === region.id;
+  const languageNote = getLanguageNote(region);
+  const isSelectable = isLanguageSelectable(region);
+  const isDisabled = Boolean(navigatingId) || !isSelectable;
+
+  const card = (
+    <Box
+      component="button"
+      type="button"
+      disabled={isDisabled}
+      onClick={() => {
+        if (!isSelectable) return;
+        onSelect(region);
+      }}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: languageNote && !isLoading ? 'flex-start' : 'center',
+        gap: 0.6,
+        minHeight: { xs: 124, sm: 136 },
+        px: 1.25,
+        py: 1.5,
+        width: '100%',
+        bgcolor: '#fff',
+        border: `1.5px solid ${isLoading ? RED : alpha(NAVY, 0.14)}`,
+        borderRadius: '12px',
+        cursor: navigatingId ? 'wait' : isSelectable ? 'pointer' : 'help',
+        fontFamily: 'inherit',
+        opacity: navigatingId && !isLoading ? 0.55 : 1,
+        WebkitTapHighlightColor: 'transparent',
+        touchAction: 'manipulation',
+        '&:disabled': {
+          opacity: navigatingId && !isLoading ? 0.55 : 1,
+          color: 'inherit',
+          pointerEvents: 'none',
+        },
+      }}
+    >
+      {isLoading ? (
+        <CircularProgress size={28} thickness={4} sx={{ color: NAVY, my: 0.75 }} />
+      ) : (
+        <Box
+          sx={{
+            width: 48,
+            height: 48,
+            borderRadius: '50%',
+            bgcolor: alpha(NAVY, 0.05),
+            border: `1px solid ${alpha(NAVY, 0.1)}`,
+            display: 'grid',
+            placeItems: 'center',
+            overflow: 'hidden',
+          }}
+        >
+          {region.flagCode ? (
+            <Box
+              component="img"
+              src={`https://flagcdn.com/w160/${region.flagCode}.png`}
+              srcSet={`https://flagcdn.com/w320/${region.flagCode}.png 2x`}
+              alt={`${region.label} flag`}
+              loading="lazy"
+              sx={{
+                width: 30,
+                height: 22,
+                objectFit: 'cover',
+                borderRadius: '3px',
+              }}
+            />
+          ) : (
+            <Iconify icon="solar:global-bold-duotone" width={24} sx={{ color: NAVY }} />
+          )}
+        </Box>
+      )}
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.25 }}>
+        <Typography
+          sx={{
+            fontWeight: 800,
+            fontSize: { xs: 13, sm: 14 },
+            color: NAVY,
+            lineHeight: 1.2,
+            textAlign: 'center',
+          }}
+        >
+          {isLoading ? 'Opening…' : region.label}
+        </Typography>
+        {!isLoading && region.nativeLabel && region.nativeLabel !== region.label ? (
+          <Typography
+            sx={{
+              fontSize: { xs: 11, sm: 12 },
+              color: alpha(NAVY, 0.72),
+              fontWeight: 500,
+              lineHeight: 1.2,
+              textAlign: 'center',
+            }}
+          >
+            {region.nativeLabel}
+          </Typography>
+        ) : null}
+      </Box>
+      {!isLoading && languageNote ? (
+        <Typography
+          sx={{
+            mt: 'auto',
+            fontSize: { xs: 10, sm: 11 },
+            color: RED,
+            fontWeight: 700,
+            lineHeight: 1.25,
+            textAlign: 'center',
+          }}
+        >
+          {languageNote}
+        </Typography>
+      ) : null}
+    </Box>
+  );
+
+  if (!languageNote || isLoading) return card;
+
+  return (
+    <Tooltip
+      title={languageNote}
+      arrow
+      placement="top"
+      slotProps={{
+        tooltip: {
+          sx: {
+            bgcolor: NAVY,
+            fontSize: 12,
+            fontWeight: 700,
+            px: 1.25,
+            py: 0.75,
+          },
+        },
+        arrow: { sx: { color: NAVY } },
+      }}
+    >
+      <Box component="span" sx={{ display: 'block', width: '100%', cursor: 'help' }}>
+        {card}
+      </Box>
+    </Tooltip>
+  );
+}
+
+function LanguageNavButton({ direction, disabled, onClick }) {
+  const isPrev = direction === 'prev';
+
+  return (
+    <Box
+      component="button"
+      type="button"
+      aria-label={isPrev ? 'Previous languages' : 'Next languages'}
+      onClick={onClick}
+      disabled={disabled}
+      sx={{
+        flexShrink: 0,
+        width: { xs: 36, sm: 40 },
+        height: { xs: 36, sm: 40 },
+        borderRadius: '50%',
+        border: `1.5px solid ${alpha(NAVY, 0.16)}`,
+        bgcolor: '#fff',
+        display: 'grid',
+        placeItems: 'center',
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.35 : 1,
+        color: NAVY,
+        p: 0,
+      }}
+    >
+      <Iconify icon={isPrev ? 'eva:arrow-ios-back-fill' : 'eva:arrow-ios-forward-fill'} width={20} />
+    </Box>
+  );
+}
+
 function HeroSection({ regions = INTL_REGIONS, onSelectRegion, hero, navigatingId = null }) {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 4;
@@ -368,29 +550,7 @@ function HeroSection({ regions = INTL_REGIONS, onSelectRegion, hero, navigatingI
                 }}
               >
                 {showNav ? (
-                  <Box
-                    component="button"
-                    type="button"
-                    aria-label="Previous languages"
-                    onClick={goPrev}
-                    disabled={page === 0}
-                    sx={{
-                      flexShrink: 0,
-                      width: { xs: 36, sm: 40 },
-                      height: { xs: 36, sm: 40 },
-                      borderRadius: '50%',
-                      border: `1.5px solid ${alpha(NAVY, 0.16)}`,
-                      bgcolor: '#fff',
-                      display: 'grid',
-                      placeItems: 'center',
-                      cursor: page === 0 ? 'default' : 'pointer',
-                      opacity: page === 0 ? 0.35 : 1,
-                      color: NAVY,
-                      p: 0,
-                    }}
-                  >
-                    <Iconify icon="eva:arrow-ios-back-fill" width={20} />
-                  </Box>
+                  <LanguageNavButton direction="prev" disabled={page === 0} onClick={goPrev} />
                 ) : null}
 
                 <Box
@@ -404,122 +564,22 @@ function HeroSection({ regions = INTL_REGIONS, onSelectRegion, hero, navigatingI
                     boxSizing: 'border-box',
                   }}
                 >
-                  {visibleRegions.map((r) => {
-                    const isLoading = navigatingId === r.id;
-                    return (
-                      <Box
-                        key={r.id}
-                        component="button"
-                        type="button"
-                        disabled={Boolean(navigatingId)}
-                        onClick={() => onSelectRegion(r)}
-                        sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 1,
-                          minHeight: { xs: 112, sm: 120 },
-                          px: 1.5,
-                          py: 2,
-                          width: '100%',
-                          bgcolor: '#fff',
-                          border: `1.5px solid ${isLoading ? RED : alpha(NAVY, 0.14)}`,
-                          borderRadius: '12px',
-                          cursor: navigatingId ? 'wait' : 'pointer',
-                          fontFamily: 'inherit',
-                          opacity: navigatingId && !isLoading ? 0.55 : 1,
-                          WebkitTapHighlightColor: 'transparent',
-                          touchAction: 'manipulation',
-                        }}
-                      >
-                        {isLoading ? (
-                          <CircularProgress size={28} thickness={4} sx={{ color: NAVY, my: 0.75 }} />
-                        ) : (
-                          <Box
-                            sx={{
-                              width: 48,
-                              height: 48,
-                              borderRadius: '50%',
-                              bgcolor: alpha(NAVY, 0.05),
-                              border: `1px solid ${alpha(NAVY, 0.1)}`,
-                              display: 'grid',
-                              placeItems: 'center',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            {r.flagCode ? (
-                              <Box
-                                component="img"
-                                src={`https://flagcdn.com/w160/${r.flagCode}.png`}
-                                srcSet={`https://flagcdn.com/w320/${r.flagCode}.png 2x`}
-                                alt={`${r.label} flag`}
-                                loading="lazy"
-                                sx={{
-                                  width: 30,
-                                  height: 22,
-                                  objectFit: 'cover',
-                                  borderRadius: '3px',
-                                }}
-                              />
-                            ) : (
-                              <Iconify icon="solar:global-bold-duotone" width={24} sx={{ color: NAVY }} />
-                            )}
-                          </Box>
-                        )}
-                        <Typography
-                          sx={{
-                            fontWeight: 800,
-                            fontSize: { xs: 13, sm: 14 },
-                            color: NAVY,
-                            lineHeight: 1.2,
-                            textAlign: 'center',
-                          }}
-                        >
-                          {isLoading ? 'Opening…' : r.label}
-                        </Typography>
-                        {!isLoading ? (
-                          <Typography
-                            sx={{
-                              fontSize: { xs: 11, sm: 12 },
-                              color: alpha(NAVY, 0.72),
-                              fontWeight: 500,
-                              lineHeight: 1.2,
-                              textAlign: 'center',
-                            }}
-                          >
-                            {r.nativeLabel}
-                          </Typography>
-                        ) : null}
-                      </Box>
-                    );
-                  })}
+                  {visibleRegions.map((region) => (
+                    <LanguageCard
+                      key={region.id}
+                      region={region}
+                      navigatingId={navigatingId}
+                      onSelect={onSelectRegion}
+                    />
+                  ))}
                 </Box>
 
                 {showNav ? (
-                  <Box
-                    component="button"
-                    type="button"
-                    aria-label="Next languages"
-                    onClick={goNext}
+                  <LanguageNavButton
+                    direction="next"
                     disabled={page >= totalPages - 1}
-                    sx={{
-                      flexShrink: 0,
-                      width: { xs: 36, sm: 40 },
-                      height: { xs: 36, sm: 40 },
-                      borderRadius: '50%',
-                      border: `1.5px solid ${alpha(NAVY, 0.16)}`,
-                      bgcolor: '#fff',
-                      display: 'grid',
-                      placeItems: 'center',
-                      cursor: page >= totalPages - 1 ? 'default' : 'pointer',
-                      opacity: page >= totalPages - 1 ? 0.35 : 1,
-                      color: NAVY,
-                      p: 0,
-                    }}
-                  >
-                    <Iconify icon="eva:arrow-ios-forward-fill" width={20} />
-                  </Box>
+                    onClick={goNext}
+                  />
                 ) : null}
               </Box>
             </Box>

@@ -4,17 +4,22 @@ export const INTL_REGION_STORAGE_KEY = 'ainexus_intl_region';
 
 /**
  * Default landing languages (fixed set — no third-party languages API).
+ * Status line under each language name is set via `note`.
  */
+const FULL_TRANSLATION_NOTE = 'Full translation in September';
+const CLOSE_CAPTION_NOTE = 'Close Caption Available';
+
 export const INTL_REGIONS = [
   {
-    id: 'zh-Hans',
-    code: 'zh-Hans',
-    label: 'Chinese',
-    nativeLabel: '中文',
-    locale: 'zh-Hans',
-    language: 'Chinese',
-    flagCode: 'cn',
-    icon: 'solar:buildings-bold-duotone',
+    id: 'en',
+    code: 'en',
+    label: 'English',
+    nativeLabel: 'International',
+    locale: 'en',
+    language: 'English',
+    flagCode: null,
+    icon: 'solar:global-bold-duotone',
+    selectable: true,
   },
   {
     id: 'vi',
@@ -25,6 +30,29 @@ export const INTL_REGIONS = [
     language: 'Vietnamese',
     flagCode: 'vn',
     icon: 'solar:map-point-bold-duotone',
+    note: CLOSE_CAPTION_NOTE,
+  },
+  {
+    id: 'id',
+    code: 'id',
+    label: 'Indonesian',
+    nativeLabel: 'Bahasa Indonesia',
+    locale: 'id',
+    language: 'Indonesian',
+    flagCode: 'id',
+    icon: 'solar:global-bold-duotone',
+    note: CLOSE_CAPTION_NOTE,
+  },
+  {
+    id: 'zh-Hans',
+    code: 'zh-Hans',
+    label: 'Chinese',
+    nativeLabel: '中文',
+    locale: 'zh-Hans',
+    language: 'Chinese',
+    flagCode: 'cn',
+    icon: 'solar:buildings-bold-duotone',
+    note: FULL_TRANSLATION_NOTE,
   },
   {
     id: 'th',
@@ -35,18 +63,37 @@ export const INTL_REGIONS = [
     language: 'Thai',
     flagCode: 'th',
     icon: 'solar:home-smile-bold-duotone',
-  },
-  {
-    id: 'en',
-    code: 'en',
-    label: 'English',
-    nativeLabel: 'English',
-    locale: 'en',
-    language: 'English',
-    flagCode: null,
-    icon: 'solar:global-bold-duotone',
+    note: CLOSE_CAPTION_NOTE,
   },
 ];
+
+export function isLanguageSelectable(region) {
+  if (typeof region?.selectable === 'boolean') return region.selectable;
+  const id = String(region?.id || region?.code || '').trim().toLowerCase();
+  const language = String(region?.language || region?.label || '').trim().toLowerCase();
+  return id === 'en' || language === 'english';
+}
+
+export function getLanguageNote(region) {
+  if (region && Object.prototype.hasOwnProperty.call(region, 'note')) {
+    return String(region.note || '').trim();
+  }
+  const keys = [region?.id, region?.code, region?.language, region?.label]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  if (keys.some((key) => key === 'zh-hans' || key === 'zh' || key === 'chinese')) {
+    return FULL_TRANSLATION_NOTE;
+  }
+  if (
+    keys.some((key) =>
+      ['th', 'thai', 'vi', 'vietnamese', 'id', 'indonesian'].includes(key)
+    )
+  ) {
+    return CLOSE_CAPTION_NOTE;
+  }
+  return '';
+}
 
 function normalizeStored(value) {
   if (!value) return null;
@@ -63,6 +110,7 @@ function normalizeStored(value) {
       flagCode: value.flagCode ?? null,
       icon: value.icon || 'solar:global-bold-duotone',
       title: value.title || value.label || '',
+      note: value.note || getLanguageNote(value),
     };
   }
   const legacy = INTL_REGIONS.find((r) => r.id === value || r.code === value);
@@ -78,7 +126,7 @@ function normalizeStored(value) {
   );
 }
 
-/** Always the four default languages. */
+/** Always the default landing languages. */
 export async function fetchIntlRegions() {
   return INTL_REGIONS;
 }
@@ -120,6 +168,7 @@ export function setStoredIntlRegion(regionOrId) {
             language: regionOrId.language,
             flagCode: regionOrId.flagCode ?? null,
             icon: regionOrId.icon,
+            note: regionOrId.note || getLanguageNote(regionOrId),
           }
     );
     localStorage.setItem(INTL_REGION_STORAGE_KEY, JSON.stringify(payload));

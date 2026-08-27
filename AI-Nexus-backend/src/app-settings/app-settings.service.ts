@@ -365,6 +365,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS: CertificateTemplateSettings 
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   transcriptTitle: 'AI FLUENCY',
+  programmeTitle: 'AI Fluency\n(AIxAccountancy)',
   logoUrls: ['', '', ''],
   signatureUrl: null,
 };
@@ -496,6 +497,18 @@ type InternationalLandingContentPayload = {
       }>;
     }>;
   };
+  languages?: Array<{
+    id?: string;
+    code?: string;
+    label?: string;
+    nativeLabel?: string;
+    locale?: string;
+    language?: string;
+    flagCode?: string | null;
+    icon?: string;
+    note?: string;
+    selectable?: boolean;
+  }>;
 };
 
 const INTL_LANDING_TRUST_MAX = 8;
@@ -504,6 +517,8 @@ const INTL_LANDING_POINTS_MAX = 8;
 const INTL_LANDING_FOOTER_COLS_MAX = 4;
 const INTL_LANDING_FOOTER_LINKS_MAX = 10;
 const INTL_LANDING_SOCIAL_MAX = 6;
+const INTL_LANDING_LANGUAGES_MAX = 12;
+const INTL_LANDING_LANGUAGES_MIN = 1;
 
 export const DEFAULT_USER_WELCOME_EMAIL_CONTENT: Required<WelcomeEmailContent> = {
   subject: 'Welcome to AI Nexus — your account is ready',
@@ -801,6 +816,9 @@ export class AppSettingsService {
       transcriptTitle:
         this.cleanText(source.transcriptTitle ?? prev.transcriptTitle, 160) ||
         DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptTitle,
+      programmeTitle:
+        this.cleanText(source.programmeTitle ?? prev.programmeTitle, 160) ||
+        DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.programmeTitle,
       logoUrls,
       signatureUrl:
         signatureRaw == null || signatureRaw === ''
@@ -2529,6 +2547,68 @@ export class AppSettingsService {
           },
         ],
       },
+      languages: [
+        {
+          id: 'en',
+          code: 'en',
+          label: 'English',
+          nativeLabel: 'International',
+          locale: 'en',
+          language: 'English',
+          flagCode: '',
+          icon: 'solar:global-bold-duotone',
+          note: '',
+          selectable: true,
+        },
+        {
+          id: 'vi',
+          code: 'vi',
+          label: 'Vietnamese',
+          nativeLabel: 'Tiếng Việt',
+          locale: 'vi',
+          language: 'Vietnamese',
+          flagCode: 'vn',
+          icon: 'solar:map-point-bold-duotone',
+          note: 'Close Caption Available',
+          selectable: false,
+        },
+        {
+          id: 'id',
+          code: 'id',
+          label: 'Indonesian',
+          nativeLabel: 'Bahasa Indonesia',
+          locale: 'id',
+          language: 'Indonesian',
+          flagCode: 'id',
+          icon: 'solar:global-bold-duotone',
+          note: 'Close Caption Available',
+          selectable: false,
+        },
+        {
+          id: 'zh-Hans',
+          code: 'zh-Hans',
+          label: 'Chinese',
+          nativeLabel: '中文',
+          locale: 'zh-Hans',
+          language: 'Chinese',
+          flagCode: 'cn',
+          icon: 'solar:buildings-bold-duotone',
+          note: 'Full translation in September',
+          selectable: false,
+        },
+        {
+          id: 'th',
+          code: 'th',
+          label: 'Thai',
+          nativeLabel: 'ไทย',
+          locale: 'th',
+          language: 'Thai',
+          flagCode: 'th',
+          icon: 'solar:home-smile-bold-duotone',
+          note: 'Close Caption Available',
+          selectable: false,
+        },
+      ],
     };
   }
 
@@ -2651,6 +2731,51 @@ export class AppSettingsService {
           })
           .filter((col: { title: string }) => Boolean(col.title)),
       },
+      languages: (() => {
+        const rawLanguages = Array.isArray(source.languages)
+          ? source.languages
+          : defaults.languages || [];
+        const rows = (rawLanguages.length ? rawLanguages : defaults.languages || [])
+          .slice(0, INTL_LANDING_LANGUAGES_MAX)
+          .map((item: any, index: number) => {
+            const row = item && typeof item === 'object' ? item : {};
+            const fallback = defaults.languages?.[index] || {};
+            const id =
+              this.cleanText(row?.id, 40) ||
+              this.cleanText(row?.code, 40) ||
+              this.cleanText(fallback?.id, 40) ||
+              `lang-${index + 1}`;
+            const label =
+              this.cleanText(row?.label, 80) ||
+              this.cleanText(row?.language, 80) ||
+              this.cleanText(fallback?.label, 80);
+            const flagCode = this.cleanText(row?.flagCode, 8).toLowerCase();
+            return {
+              id,
+              code: this.cleanText(row?.code, 40) || id,
+              label,
+              nativeLabel:
+                this.cleanText(row?.nativeLabel, 80) ||
+                this.cleanText(fallback?.nativeLabel, 80),
+              locale: this.cleanText(row?.locale, 40) || this.cleanText(row?.code, 40) || id,
+              language: this.cleanText(row?.language, 80) || label,
+              flagCode: flagCode || null,
+              icon:
+                this.cleanText(row?.icon, 120) ||
+                this.cleanText(fallback?.icon, 120) ||
+                'solar:global-bold-duotone',
+              note: this.cleanText(row?.note, 120),
+              selectable:
+                typeof row?.selectable === 'boolean'
+                  ? row.selectable
+                  : Boolean(fallback?.selectable),
+            };
+          })
+          .filter((row: { id: string; label: string }) => Boolean(row.id && row.label));
+        return rows.length >= INTL_LANDING_LANGUAGES_MIN
+          ? rows
+          : (defaults.languages || []).slice(0, INTL_LANDING_LANGUAGES_MAX);
+      })(),
     };
   }
 

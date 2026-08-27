@@ -89,6 +89,68 @@ export const INTL_LANDING_DEFAULTS = {
       },
     ],
   },
+  languages: [
+    {
+      id: 'en',
+      code: 'en',
+      label: 'English',
+      nativeLabel: 'International',
+      locale: 'en',
+      language: 'English',
+      flagCode: '',
+      icon: 'solar:global-bold-duotone',
+      note: '',
+      selectable: true,
+    },
+    {
+      id: 'vi',
+      code: 'vi',
+      label: 'Vietnamese',
+      nativeLabel: 'Tiếng Việt',
+      locale: 'vi',
+      language: 'Vietnamese',
+      flagCode: 'vn',
+      icon: 'solar:map-point-bold-duotone',
+      note: 'Close Caption Available',
+      selectable: false,
+    },
+    {
+      id: 'id',
+      code: 'id',
+      label: 'Indonesian',
+      nativeLabel: 'Bahasa Indonesia',
+      locale: 'id',
+      language: 'Indonesian',
+      flagCode: 'id',
+      icon: 'solar:global-bold-duotone',
+      note: 'Close Caption Available',
+      selectable: false,
+    },
+    {
+      id: 'zh-Hans',
+      code: 'zh-Hans',
+      label: 'Chinese',
+      nativeLabel: '中文',
+      locale: 'zh-Hans',
+      language: 'Chinese',
+      flagCode: 'cn',
+      icon: 'solar:buildings-bold-duotone',
+      note: 'Full translation in September',
+      selectable: false,
+    },
+    {
+      id: 'th',
+      code: 'th',
+      label: 'Thai',
+      nativeLabel: 'ไทย',
+      locale: 'th',
+      language: 'Thai',
+      flagCode: 'th',
+      icon: 'solar:home-smile-bold-duotone',
+      note: 'Close Caption Available',
+      selectable: false,
+    },
+  ],
 };
 
 export function normalizeIntlLandingContent(input) {
@@ -149,6 +211,37 @@ export function normalizeIntlLandingContent(input) {
           .filter((col) => col.title)
       : d.footer.columns;
 
+  const languages =
+    Array.isArray(source.languages) && source.languages.length
+      ? source.languages
+          .slice(0, 12)
+          .map((item, index) => {
+            const row = item && typeof item === 'object' ? item : {};
+            const fallback = d.languages?.[index] || {};
+            const id = String(row.id || row.code || fallback.id || `lang-${index + 1}`).trim();
+            const label = String(row.label || row.language || fallback.label || '').trim();
+            const flagCode = String(row.flagCode ?? fallback.flagCode ?? '')
+              .trim()
+              .toLowerCase();
+            return {
+              id,
+              code: String(row.code || id).trim(),
+              label,
+              nativeLabel: String(row.nativeLabel || fallback.nativeLabel || '').trim(),
+              locale: String(row.locale || row.code || id).trim(),
+              language: String(row.language || label).trim(),
+              flagCode: flagCode || null,
+              icon: String(row.icon || fallback.icon || 'solar:global-bold-duotone').trim(),
+              note: String(row.note ?? fallback.note ?? '').trim(),
+              selectable:
+                typeof row.selectable === 'boolean'
+                  ? row.selectable
+                  : Boolean(fallback.selectable),
+            };
+          })
+          .filter((item) => item.id && item.label)
+      : d.languages;
+
   return {
     hero: {
       eyebrow: String(hero.eyebrow || d.hero.eyebrow),
@@ -174,5 +267,6 @@ export function normalizeIntlLandingContent(input) {
       social,
       columns,
     },
+    languages,
   };
 }
