@@ -38,6 +38,7 @@ import {
   findUserByVerifiedNricFin,
 } from './utils/nric-registration-guard.util';
 import { LlmService } from '../llm/llm.service';
+import { requireJwtSecret } from '../common/cors-origins.util';
 import { LlmProvider } from '../llm/llm.types';
 import {
   EXPERIENCED_MEMBERSHIP_PATHWAY_RULE,
@@ -201,7 +202,7 @@ export class AuthService {
   }
 
   private hashStudentVerificationPin(verificationToken: string, pin: string): string {
-    const secret = String(process.env.JWT_SECRET || 'student-verification-secret').trim() || 'student-verification-secret';
+    const secret = requireJwtSecret();
     return crypto
       .createHmac('sha256', secret)
       .update(`${String(verificationToken || '').trim()}:${String(pin || '').trim()}`)

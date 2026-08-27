@@ -15,6 +15,8 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { GlobalExceptionFilter } from './utils/global-exception.filter';
 import { registerExpressErrorMiddleware } from './utils/express-error.middleware';
+import { getAllowedCorsOrigins, requireJwtSecret } from './common/cors-origins.util';
+import { authRateLimitExpress } from './common/auth-rate-limit.middleware';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -68,6 +70,7 @@ const bootstrapLogger = new Logger('Bootstrap');
 
 async function bootstrap() {
   try {
+    requireJwtSecret();
     const nodeEnv = process.env.NODE_ENV;
     const isDevelopment = nodeEnv === 'development';
     const port = Number(process.env.PORT) || (isDevelopment ? 5000 : 3000);
@@ -113,72 +116,17 @@ async function bootstrap() {
 
     app.use(cookieParser());
 
-    // Enable CORS — include Flowise browser origin (often different port than main SPA)
-    const configuredOrigins = (process.env.FRONTEND_URLS || '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean);
-    const extraCorsOrigins = (process.env.CORS_EXTRA_ORIGINS || '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean);
-    const fallbackOrigin = process.env.FRONTEND_URL?.trim();
-    const intlOrigin = process.env.INTL_FRONTEND_URL?.trim().replace(/\/$/, '') || '';
-    const prodDefaultOrigin = nodeEnv === 'production' ? 'https://ainexus.isca.org.sg' : '';
-    const baseAllowedOrigins = configuredOrigins.length
-      ? configuredOrigins
-      : [fallbackOrigin || prodDefaultOrigin].filter(Boolean);
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('X-XSS-Protection', '0');
+      res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+      next();
+    });
 
-    const originsFromFlowiseEnv: string[] = [];
-    for (const key of ['FLOWISE_URL', 'VITE_FLOWISE_URL', 'FLOWISE_INTERNAL_URL'] as const) {
-      const raw = process.env[key]?.trim();
-      if (!raw) continue;
-      try {
-        originsFromFlowiseEnv.push(new URL(raw).origin);
-      } catch {
-        // ignore invalid URL
-      }
-    }
-
-    const devLocalOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:3003',
-      'https://localhost:3000',
-      'https://localhost:3003',
-      'http://localhost:3030',
-      'http://localhost:8080',
-      'http://localhost:5173',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-      'http://127.0.0.1:3002',
-      'http://127.0.0.1:3003',
-      'https://127.0.0.1:3000',
-      'https://127.0.0.1:3003',
-      'http://127.0.0.1:3030',
-      'http://127.0.0.1:8080',
-      'http://127.0.0.1:5173',
-    ];
-    const configuredFlowisePort = (process.env.FLOWISE_PORT || '3002').trim();
-    const productionFlowiseOrigins = nodeEnv === 'production'
-      ? [
-          `https://${host}:${configuredFlowisePort}`,
-          `http://${host}:${configuredFlowisePort}`,
-        ]
-      : [];
-    const allowedOrigins = Array.from(
-      new Set([
-        ...baseAllowedOrigins,
-        ...extraCorsOrigins,
-        ...(intlOrigin ? [intlOrigin] : []),
-        ...originsFromFlowiseEnv,
-        ...productionFlowiseOrigins,
-        ...(nodeEnv === 'production' && prodDefaultOrigin ? [prodDefaultOrigin] : []),
-        ...(isDevelopment ? devLocalOrigins : []),
-      ]),
-    );
-    const allowAnyOrigin = allowedOrigins.length === 0;
+    const allowedOrigins = getAllowedCorsOrigins();
+    const allowAnyOrigin = allowedOrigins.length === 0 && isDevelopment;
 
     app.enableCors({
       origin: (origin, callback) => {
@@ -194,8 +142,15 @@ async function bootstrap() {
       credentials: !allowAnyOrigin,
     });
 
-    // Serve static files from public/uploads directory
-    app.use('/uploads', express.static(join(process.cwd(), 'public', 'uploads')));
+    app.use('/api/auth', authRateLimitExpress);
+
+    app.use(
+      '/uploads',
+      express.static(join(process.cwd(), 'public', 'uploads'), {
+        index: false,
+        dotfiles: 'deny',
+      }),
+    );
 
     // Webhook route needs raw body for signature verification; skip json parser for it
     const jsonBodyLimitMb = Number(process.env.JSON_BODY_LIMIT_MB);

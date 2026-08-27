@@ -1,6 +1,8 @@
+import { getSocketIoCors } from './cors-origins.util';
+
 /** Shared Socket.IO settings — disable compression and cap payloads to limit RAM per connection. */
 export const SOCKET_IO_GATEWAY_OPTIONS = {
-  cors: { origin: '*' as const },
+  cors: getSocketIoCors(),
   path: '/socket.io',
   namespace: '/',
   pingTimeout: 20_000,

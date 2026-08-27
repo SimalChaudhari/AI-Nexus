@@ -180,7 +180,7 @@ export class AccountController {
         if (username === process.env.FLOWISE_USERNAME && password === process.env.FLOWISE_PASSWORD) {
             return res.json({ message: 'Authentication successful' })
         } else {
-            return res.json({ message: 'Authentication failed' })
+            return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Authentication failed' })
         }
     }
 }

@@ -19,10 +19,11 @@ async function bootstrap(): Promise<express.Express> {
     app.useGlobalFilters(new GlobalExceptionFilter());
 
     // Enable CORS
+    const frontendUrl = process.env.FRONTEND_URL?.trim();
     app.enableCors({
-      origin: process.env.FRONTEND_URL || '*',
+      origin: frontendUrl && frontendUrl !== '*' ? frontendUrl : false,
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-      credentials: true,
+      credentials: Boolean(frontendUrl && frontendUrl !== '*'),
     });
 
     // Serve static files from assets directory
@@ -30,8 +31,8 @@ async function bootstrap(): Promise<express.Express> {
     app.use('/assets', express.static(join(process.cwd(), 'assets')));
 
     // Enable JSON body parser with increased limit for large payloads
-    app.use(express.json({ limit: '50mb' }));
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '2mb' }));
+    app.use(express.urlencoded({ limit: process.env.JSON_BODY_LIMIT || '2mb', extended: true }));
 
     registerExpressErrorMiddleware(app);
 
