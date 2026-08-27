@@ -107,6 +107,8 @@ export class UserController {
         @Query('role') role?: string,
         @Query('progressFilter') progressFilter?: string,
         @Query('fields') fields?: string,
+        @Query('from') from?: string,
+        @Query('to') to?: string,
         @Res() response?: Response,
     ) {
         const normalizedStatus = this.paginationService.parseEnumQuery(status, UserStatus);
@@ -118,6 +120,8 @@ export class UserController {
             role: normalizedRole,
             progressFilter: normalizedProgressFilter,
             fields,
+            from,
+            to,
         });
 
         response!.setHeader('Content-Type', 'text/csv; charset=utf-8');

@@ -147,6 +147,7 @@ export function buildAdminUsersCsv(params: {
   users: Array<UserEntity & { companyName?: string | null; company?: string | null }>;
   fields: AdminUserExportFieldKey[];
   progressByUser?: Map<string, AdminUserProgressFlags>;
+  filenamePrefix?: string;
 }): { filename: string; csv: string } {
   const fieldMeta = new Map(ADMIN_USER_EXPORT_FIELDS.map((f) => [f.key, f.label]));
   const header = params.fields.map((key) => fieldMeta.get(key) || key);
@@ -157,5 +158,6 @@ export function buildAdminUsersCsv(params: {
   );
   const csv = `\uFEFF${[header.join(','), ...lines].join('\n')}`;
   const stamp = new Date().toISOString().slice(0, 10);
-  return { filename: `admin-users-export-${stamp}.csv`, csv };
+  const prefix = params.filenamePrefix || 'admin-users-export';
+  return { filename: `${prefix}-${stamp}.csv`, csv };
 }

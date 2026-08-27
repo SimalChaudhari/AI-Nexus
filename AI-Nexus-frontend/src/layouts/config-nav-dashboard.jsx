@@ -226,6 +226,19 @@ export const navData = [
         title: 'Corporate Members',
         path: paths.admin.corporateMember.root,
         icon: <Iconify icon="solar:buildings-3-bold-duotone" width={24} />,
+        children: [
+          {
+            title: 'Companies',
+            path: paths.admin.corporateMember.root,
+            deepMatch: true,
+            href: paths.admin.corporateMember.list,
+            activeExcludePaths: [paths.admin.corporateMember.weeklyMetrics],
+          },
+          {
+            title: 'Company enrolment',
+            path: paths.admin.corporateMember.weeklyMetrics,
+          },
+        ],
       },
       {
         title: 'Payment',
