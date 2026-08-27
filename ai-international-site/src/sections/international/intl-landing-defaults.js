@@ -211,36 +211,31 @@ export function normalizeIntlLandingContent(input) {
           .filter((col) => col.title)
       : d.footer.columns;
 
-  const languages =
-    Array.isArray(source.languages) && source.languages.length
-      ? source.languages
-          .slice(0, 12)
-          .map((item, index) => {
-            const row = item && typeof item === 'object' ? item : {};
-            const fallback = d.languages?.[index] || {};
-            const id = String(row.id || row.code || fallback.id || `lang-${index + 1}`).trim();
-            const label = String(row.label || row.language || fallback.label || '').trim();
-            const flagCode = String(row.flagCode ?? fallback.flagCode ?? '')
-              .trim()
-              .toLowerCase();
-            return {
-              id,
-              code: String(row.code || id).trim(),
-              label,
-              nativeLabel: String(row.nativeLabel || fallback.nativeLabel || '').trim(),
-              locale: String(row.locale || row.code || id).trim(),
-              language: String(row.language || label).trim(),
-              flagCode: flagCode || null,
-              icon: String(row.icon || fallback.icon || 'solar:global-bold-duotone').trim(),
-              note: String(row.note ?? fallback.note ?? '').trim(),
-              selectable:
-                typeof row.selectable === 'boolean'
-                  ? row.selectable
-                  : Boolean(fallback.selectable),
-            };
-          })
-          .filter((item) => item.id && item.label)
-      : d.languages;
+  const languages = Array.isArray(source.languages)
+    ? source.languages
+        .slice(0, 12)
+        .map((item, index) => {
+          const row = item && typeof item === 'object' ? item : {};
+          const id = String(row.id || row.code || `lang-${index + 1}`).trim();
+          const label = String(row.label || row.language || '').trim();
+          const flagCode = String(row.flagCode ?? '')
+            .trim()
+            .toLowerCase();
+          return {
+            id,
+            code: String(row.code || id).trim(),
+            label,
+            nativeLabel: String(row.nativeLabel ?? '').trim(),
+            locale: String(row.locale || row.code || id).trim(),
+            language: String(row.language || label).trim(),
+            flagCode: flagCode || null,
+            icon: String(row.icon || 'solar:global-bold-duotone').trim(),
+            note: String(row.note ?? '').trim(),
+            selectable: typeof row.selectable === 'boolean' ? row.selectable : false,
+          };
+        })
+        .filter((item) => item.id && item.label)
+    : d.languages;
 
   return {
     hero: {

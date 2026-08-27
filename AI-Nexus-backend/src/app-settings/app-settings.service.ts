@@ -518,7 +518,6 @@ const INTL_LANDING_FOOTER_COLS_MAX = 4;
 const INTL_LANDING_FOOTER_LINKS_MAX = 10;
 const INTL_LANDING_SOCIAL_MAX = 6;
 const INTL_LANDING_LANGUAGES_MAX = 12;
-const INTL_LANDING_LANGUAGES_MIN = 1;
 
 export const DEFAULT_USER_WELCOME_EMAIL_CONTENT: Required<WelcomeEmailContent> = {
   subject: 'Welcome to AI Nexus — your account is ready',
@@ -2732,49 +2731,35 @@ export class AppSettingsService {
           .filter((col: { title: string }) => Boolean(col.title)),
       },
       languages: (() => {
-        const rawLanguages = Array.isArray(source.languages)
-          ? source.languages
-          : defaults.languages || [];
-        const rows = (rawLanguages.length ? rawLanguages : defaults.languages || [])
+        const hasSavedLanguages = Array.isArray(source.languages);
+        if (!hasSavedLanguages) {
+          return (defaults.languages || []).slice(0, INTL_LANDING_LANGUAGES_MAX);
+        }
+        return source.languages
           .slice(0, INTL_LANDING_LANGUAGES_MAX)
           .map((item: any, index: number) => {
             const row = item && typeof item === 'object' ? item : {};
-            const fallback = defaults.languages?.[index] || {};
             const id =
               this.cleanText(row?.id, 40) ||
               this.cleanText(row?.code, 40) ||
-              this.cleanText(fallback?.id, 40) ||
               `lang-${index + 1}`;
             const label =
-              this.cleanText(row?.label, 80) ||
-              this.cleanText(row?.language, 80) ||
-              this.cleanText(fallback?.label, 80);
+              this.cleanText(row?.label, 80) || this.cleanText(row?.language, 80);
             const flagCode = this.cleanText(row?.flagCode, 8).toLowerCase();
             return {
               id,
               code: this.cleanText(row?.code, 40) || id,
               label,
-              nativeLabel:
-                this.cleanText(row?.nativeLabel, 80) ||
-                this.cleanText(fallback?.nativeLabel, 80),
+              nativeLabel: this.cleanText(row?.nativeLabel, 80),
               locale: this.cleanText(row?.locale, 40) || this.cleanText(row?.code, 40) || id,
               language: this.cleanText(row?.language, 80) || label,
               flagCode: flagCode || null,
-              icon:
-                this.cleanText(row?.icon, 120) ||
-                this.cleanText(fallback?.icon, 120) ||
-                'solar:global-bold-duotone',
+              icon: this.cleanText(row?.icon, 120) || 'solar:global-bold-duotone',
               note: this.cleanText(row?.note, 120),
-              selectable:
-                typeof row?.selectable === 'boolean'
-                  ? row.selectable
-                  : Boolean(fallback?.selectable),
+              selectable: typeof row?.selectable === 'boolean' ? row.selectable : false,
             };
           })
           .filter((row: { id: string; label: string }) => Boolean(row.id && row.label));
-        return rows.length >= INTL_LANDING_LANGUAGES_MIN
-          ? rows
-          : (defaults.languages || []).slice(0, INTL_LANDING_LANGUAGES_MAX);
       })(),
     };
   }
