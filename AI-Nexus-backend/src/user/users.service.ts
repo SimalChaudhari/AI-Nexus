@@ -367,15 +367,30 @@ export class UserService {
         role?: UserRole;
         progressFilter?: AdminUserProgressFilter;
         fields?: string | string[];
+        from?: string;
+        to?: string;
     }): Promise<{ filename: string; csv: string }> {
         const fields = parseAdminUserExportFields(params.fields);
-        const users = (await this.getAll({
+        let users = (await this.getAll({
             usePagination: false,
             search: params.search,
             status: params.status,
             role: params.role,
             progressFilter: params.progressFilter,
         })) as Array<UserEntity & { companyName?: string | null; company?: string | null }>;
+
+        const fromBound = this.parseExportDayBound(params.from, false);
+        const toBound = this.parseExportDayBound(params.to, true);
+        if (fromBound || toBound) {
+            users = users.filter((user) => {
+                const created = user.createdAt instanceof Date ? user.createdAt : new Date(String(user.createdAt || ''));
+                if (Number.isNaN(created.getTime())) return false;
+                const t = created.getTime();
+                if (fromBound && t < fromBound.getTime()) return false;
+                if (toBound && t > toBound.getTime()) return false;
+                return true;
+            });
+        }
 
         let progressByUser;
         if (adminUserExportNeedsProgress(fields) && users.length) {
@@ -384,7 +399,25 @@ export class UserService {
             );
         }
 
-        return buildAdminUsersCsv({ users, fields, progressByUser });
+        return buildAdminUsersCsv({
+            users,
+            fields,
+            progressByUser,
+            filenamePrefix: params.role === UserRole.Corporate ? 'corporate-hr-export' : 'admin-users-export',
+        });
+    }
+
+    private parseExportDayBound(value: string | undefined, endOfDay: boolean): Date | null {
+        const raw = String(value || '').trim();
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+        if (!match) return null;
+        const year = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        const sgOffsetMs = 8 * 60 * 60 * 1000;
+        const start = new Date(Date.UTC(year, month, day) - sgOffsetMs);
+        if (!endOfDay) return start;
+        return new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
     }
 
     async findAllUsers(): Promise<UserEntity[]> {

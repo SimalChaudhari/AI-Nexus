@@ -277,6 +277,7 @@ function CertificateCard({
               fontWeight: 700,
               lineHeight: 1.35,
               fontSize: { xs: '0.95rem', md: '1rem' },
+              whiteSpace: 'pre-line',
               display: '-webkit-box',
               WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical',

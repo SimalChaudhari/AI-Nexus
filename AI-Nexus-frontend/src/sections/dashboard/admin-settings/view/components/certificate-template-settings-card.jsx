@@ -28,6 +28,7 @@ export const DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS = {
   signatoryTitle: 'CHIEF EXECUTIVE OFFICER',
   issuerName: 'ISCA ACADEMY PTE LTD',
   transcriptTitle: 'AI FLUENCY',
+  programmeTitle: 'AI Fluency\n(AIxAccountancy)',
   logoUrls: ['', '', ''],
   signatureUrl: '',
 };
@@ -62,6 +63,7 @@ function normalizeSettings(data) {
     signatoryTitle: source.signatoryTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.signatoryTitle,
     issuerName: source.issuerName ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.issuerName,
     transcriptTitle: source.transcriptTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.transcriptTitle,
+    programmeTitle: source.programmeTitle ?? DEFAULT_CERTIFICATE_TEMPLATE_SETTINGS.programmeTitle,
     logoUrls,
     signatureUrl: resolvePreviewUrl(source.signatureUrl || ''),
   };
@@ -111,6 +113,7 @@ export function CertificateTemplateSettingsCard() {
         signatoryTitle: settings.signatoryTitle,
         issuerName: settings.issuerName,
         transcriptTitle: settings.transcriptTitle,
+        programmeTitle: settings.programmeTitle,
       };
       const result = await appSettingsService.updateCertificateTemplateSettings(payload);
       setSettings(normalizeSettings(result?.certificateTemplateSettings || result));
@@ -228,6 +231,14 @@ export function CertificateTemplateSettingsCard() {
         helperText: 'Line above programme / course title',
       },
       {
+        key: 'programmeTitle',
+        label: 'Programme title',
+        helperText:
+          'Shown on the certificate under the session label. Press Enter for a second line, e.g. AI Fluency then (AIxAccountancy).',
+        multiline: true,
+        minRows: 2,
+      },
+      {
         key: 'cpeSectionLabel',
         label: 'CPE section heading',
         helperText: 'Use {hours} for actual earned CPE hours (e.g. Cat 5 CPE Hours: {hours} Hour)',
@@ -262,8 +273,8 @@ export function CertificateTemplateSettingsCard() {
               Certificate template text
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Control the static wording on generated certificate PDFs. Learner name, course title,
-              dates, CPE hours, and certificate number stay dynamic.
+              Control the static wording on generated certificate PDFs. Learner name, dates, CPE
+              hours, certificate number, and the Fluency/Champion level stay dynamic.
             </Typography>
           </Box>
 

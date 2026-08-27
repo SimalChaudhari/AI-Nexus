@@ -253,6 +253,8 @@ export const userService = {
         progressFilter: params.progressFilter,
         fields: params.fields,
         role: params.role,
+        from: params.from,
+        to: params.to,
       });
       const response = await axios.get('/users/export', {
         params: queryParams,

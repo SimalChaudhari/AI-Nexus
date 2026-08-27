@@ -33,6 +33,9 @@ const OrderDetailsPage = lazy(() => import('src/pages/dashboard/order/details'))
 
 // Corporate members
 const CorporateMemberListPage = lazy(() => import('src/pages/dashboard/corporate-member/list'));
+const CorporateMemberWeeklyMetricsPage = lazy(
+  () => import('src/pages/dashboard/corporate-member/weekly-metrics')
+);
 const CorporateMemberDetailsPage = lazy(() => import('src/pages/dashboard/corporate-member/details'));
 const CorporateMemberEditPage = lazy(() => import('src/pages/dashboard/corporate-member/edit'));
 
@@ -184,6 +187,7 @@ const BlankPage = lazy(() => import('src/pages/dashboard/blank'));
 
 // Settings
 const SettingsPage = lazy(() => import('src/pages/dashboard/settings'));
+const WeeklyMetricsPage = lazy(() => import('src/pages/dashboard/weekly-metrics'));
 
 // ----------------------------------------------------------------------
 
@@ -440,6 +444,7 @@ export const adminRoutes = [
         children: [
           { element: <CorporateMemberListPage />, index: true },
           { path: 'list', element: <CorporateMemberListPage /> },
+          { path: 'weekly-metrics', element: <CorporateMemberWeeklyMetricsPage /> },
           { path: ':id/edit', element: <CorporateMemberEditPage /> },
           { path: ':id', element: <CorporateMemberDetailsPage /> },
         ],
@@ -498,6 +503,7 @@ export const adminRoutes = [
       { path: 'blank', element: <BlankPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'settings/:section', element: <SettingsPage /> },
+      { path: 'weekly-metrics', element: <WeeklyMetricsPage /> },
       { path: 'profile', element: <AdminProfilePage /> },
     ],
   },

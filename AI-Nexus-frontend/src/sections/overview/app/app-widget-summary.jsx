@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { fNumber, fPercent, fCurrency } from 'src/utils/format-number';
+import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 import { Chart, useChart } from 'src/components/chart';
 
@@ -29,6 +30,9 @@ export function AppWidgetSummary({
   format = 'number',
   icon = 'solar:chart-bold-duotone',
   color = 'primary',
+  trendPeriod = '· 7 days',
+  tag,
+  hideTrend = false,
   sx,
   ...other
 }) {
@@ -93,7 +97,22 @@ export function AppWidgetSummary({
           <Iconify icon={icon} width={22} />
         </Box>
 
-        {series.some((n) => Number(n) > 0) ? (
+        {tag ? (
+          <Label
+            variant="filled"
+            color={color === 'info' ? 'info' : color === 'success' ? 'success' : 'primary'}
+            startIcon={<Iconify icon="solar:diploma-verified-bold" width={14} />}
+            sx={{
+              height: 24,
+              px: 1,
+              fontWeight: 700,
+              letterSpacing: 0.2,
+              boxShadow: `0 6px 12px ${alpha(palette.main, 0.28)}`,
+            }}
+          >
+            {tag}
+          </Label>
+        ) : series.some((n) => Number(n) > 0) ? (
           <Chart
             type="bar"
             series={[{ data: series }]}
@@ -121,6 +140,7 @@ export function AppWidgetSummary({
         {displayTotal}
       </Typography>
 
+      {hideTrend ? null : (
       <Box
         sx={{
           mt: 1.5,
@@ -136,9 +156,10 @@ export function AppWidgetSummary({
       >
         {trend.text}
         <Box component="span" sx={{ ml: 0.5, fontWeight: 500, opacity: 0.8 }}>
-          · 7 days
+          {trendPeriod}
         </Box>
       </Box>
+      )}
     </Card>
   );
 }

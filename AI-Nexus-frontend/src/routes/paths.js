@@ -374,6 +374,7 @@ export const paths = {
     corporateMember: {
       root: `${ROOTS.ADMIN}/corporate-member`,
       list: `${ROOTS.ADMIN}/corporate-member/list`,
+      weeklyMetrics: `${ROOTS.ADMIN}/corporate-member/weekly-metrics`,
       details: (id) => `${ROOTS.ADMIN}/corporate-member/${id}`,
       edit: (id) => `${ROOTS.ADMIN}/corporate-member/${id}/edit`,
     },
@@ -393,6 +394,7 @@ export const paths = {
     },
     settings: `${ROOTS.ADMIN}/settings`,
     settingsSection: (section) => `${ROOTS.ADMIN}/settings/${section}`,
+    weeklyMetrics: `${ROOTS.ADMIN}/weekly-metrics`,
   },
 };
 

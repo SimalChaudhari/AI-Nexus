@@ -7,9 +7,9 @@ import { CourseModuleSectionEntity } from '../course/course-module-section.entit
 import { computeCpeHoursFromWatchSeconds } from '../course/course-program-cpe-summary.util';
 import { buildCourseCertificatePdf } from '../course/utils/certificate-pdf.util';
 import {
-  CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
   mergeCertificateTemplateIntoInput,
   resolveCertificateProgrammeLevel,
+  resolveCertificateProgrammeTitle,
 } from '../course/utils/certificate-pdf-shared.util';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 import { InternationalMembershipType } from '../intl-auth/international-user.entity';
@@ -572,6 +572,9 @@ export class IntlPathwayWatchProgressService {
       progress.map((row) => [String(row.pathwayCode || ''), row] as const),
     );
 
+    const certTemplate = await this.appSettingsService.getCertificateTemplateForPdf();
+    const programmeTitle = resolveCertificateProgrammeTitle(certTemplate);
+
     const pillarHours = new Map<number, number>();
     let earnedCpeHours = 0;
     const transcript = requiredModules.map((mod) => {
@@ -594,7 +597,7 @@ export class IntlPathwayWatchProgressService {
       return {
         moduleId: String(mod.moduleId || mod.id || ''),
         moduleTitle: String(mod.title || mod.code),
-        courseTitle: CERTIFICATE_PROGRAMME_DISPLAY_TITLE,
+        courseTitle: programmeTitle,
         pillarIndex,
         completedSections: row?.isCompleted ? 1 : 0,
         totalSections: 1,
@@ -614,16 +617,12 @@ export class IntlPathwayWatchProgressService {
       };
     });
 
-    const courseTitle = CERTIFICATE_PROGRAMME_DISPLAY_TITLE;
-
-    const certTemplate = await this.appSettingsService.getCertificateTemplateForPdf();
-
     return buildCourseCertificatePdf(
       mergeCertificateTemplateIntoInput(
         {
           certificateNo: cert.certificateNo,
           learnerName,
-          courseTitle,
+          courseTitle: programmeTitle,
           programmeLevel: resolveCertificateProgrammeLevel(earnedCpeHours),
           completedAt: cert.completedAt,
           earnedCpeHours,

@@ -401,6 +401,18 @@ export type InternationalLandingContent = {
       }>;
     }>;
   };
+  languages?: Array<{
+    id?: string;
+    code?: string;
+    label?: string;
+    nativeLabel?: string;
+    locale?: string;
+    language?: string;
+    flagCode?: string | null;
+    icon?: string;
+    note?: string;
+    selectable?: boolean;
+  }>;
 };
 
 export type CertificateTemplateSettings = {
@@ -414,6 +426,7 @@ export type CertificateTemplateSettings = {
   signatoryTitle?: string;
   issuerName?: string;
   transcriptTitle?: string;
+  programmeTitle?: string;
   /** Header logos left → center → right (img2, img1, img3). Only the center slot is drawn. */
   logoUrls?: string[];
   signatureUrl?: string | null;
