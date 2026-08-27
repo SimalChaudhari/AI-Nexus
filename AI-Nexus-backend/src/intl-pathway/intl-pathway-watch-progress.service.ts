@@ -33,10 +33,9 @@ function parseCoverageRangePairs(raw: unknown): [number, number][] {
   return out;
 }
 
-function mergeCoverageRanges(ranges: [number, number][]): [number, number][] {
+function mergeCoverageRanges(ranges: [number, number][], gapFillSec = 0.75): [number, number][] {
   if (!ranges.length) return [];
-  // Close tiny holes from client play/pause / poll jitter (same as Fort).
-  const GAP_FILL_SEC = 0.75;
+  const MAX_RANGES = 400;
   const sorted = ranges
     .map(([a, b]) => [Math.min(a, b), Math.max(a, b)] as [number, number])
     .filter(([s, e]) => e > s && Number.isFinite(s) && Number.isFinite(e))
@@ -44,8 +43,11 @@ function mergeCoverageRanges(ranges: [number, number][]): [number, number][] {
   const out: [number, number][] = [];
   for (const [s, e] of sorted) {
     const last = out[out.length - 1];
-    if (!last || s > last[1] + GAP_FILL_SEC) out.push([s, e]);
+    if (!last || s > last[1] + gapFillSec) out.push([s, e]);
     else last[1] = Math.max(last[1], e);
+  }
+  if (out.length > MAX_RANGES && gapFillSec < 32) {
+    return mergeCoverageRanges(out, Math.max(gapFillSec * 4, 4));
   }
   return out;
 }

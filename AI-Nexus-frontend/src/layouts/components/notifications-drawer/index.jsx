@@ -1,5 +1,5 @@
 import { m } from 'framer-motion';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
 import Tab from '@mui/material/Tab';
@@ -93,6 +93,11 @@ export function NotificationsDrawer({ sx, ...other }) {
     }
   }, [drawer.value, loadNotifications]);
 
+  const drawerOpenRef = useRef(drawer.value);
+  drawerOpenRef.current = drawer.value;
+  const loadNotificationsRef = useRef(loadNotifications);
+  loadNotificationsRef.current = loadNotifications;
+
   useEffect(() => {
     if (!authenticated || !isSocketEnabled()) return undefined;
 
@@ -100,6 +105,8 @@ export function NotificationsDrawer({ sx, ...other }) {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       autoConnect: true,
+      reconnectionAttempts: 15,
+      timeout: 10000,
     });
 
     socket.on('connect', () => {
@@ -108,8 +115,8 @@ export function NotificationsDrawer({ sx, ...other }) {
 
     socket.on('notification:created', () => {
       refreshUnreadCount();
-      if (drawer.value) {
-        loadNotifications();
+      if (drawerOpenRef.current) {
+        loadNotificationsRef.current();
       }
     });
 
@@ -117,7 +124,7 @@ export function NotificationsDrawer({ sx, ...other }) {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [authenticated, drawer.value, loadNotifications, refreshUnreadCount]);
+  }, [authenticated, refreshUnreadCount]);
 
   const handleMarkAllAsRead = async () => {
     try {

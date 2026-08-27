@@ -1846,17 +1846,33 @@ export class AuthService {
   ): Promise<string[]> {
     try {
       const tesseractModule = await import('tesseract.js');
+      const createWorker =
+        (tesseractModule as any).createWorker
+        || (tesseractModule as any).default?.createWorker;
       const recognize =
         (tesseractModule as any).recognize
         || (tesseractModule as any).default?.recognize;
 
-      if (typeof recognize !== 'function') {
-        console.warn('[NRIC] Local OCR fallback unavailable | side=', side, 'reason=recognize function missing');
-        return [];
+      let worker: { recognize: (input: Buffer) => Promise<{ data?: { text?: string } }>; terminate: () => Promise<void> } | null = null;
+      let rawText = '';
+      try {
+        if (typeof createWorker === 'function') {
+          worker = await createWorker('eng');
+          const result = await worker!.recognize(image.buffer);
+          rawText = String(result?.data?.text || '').trim();
+        } else if (typeof recognize === 'function') {
+          const result = await recognize(image.buffer, 'eng');
+          rawText = String(result?.data?.text || '').trim();
+        } else {
+          console.warn('[NRIC] Local OCR fallback unavailable | side=', side, 'reason=recognize function missing');
+          return [];
+        }
+      } finally {
+        if (worker?.terminate) {
+          await worker.terminate().catch(() => undefined);
+        }
       }
 
-      const result = await recognize(image.buffer, 'eng');
-      const rawText = String(result?.data?.text || '').trim();
       const candidateInputs = this.extractSingaporeIdentifierCandidates(rawText);
 
       console.info(

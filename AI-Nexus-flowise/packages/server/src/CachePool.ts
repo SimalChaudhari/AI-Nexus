@@ -80,7 +80,26 @@ export class CachePool {
                 await this.redisClient.set(`ssoTokenCache:${ssoToken}`, serializedValue, 'EX', 120)
             }
         } else {
-            this.ssoTokenCache[ssoToken] = value
+            this.ssoTokenCache[ssoToken] = { value, expiresAt: Date.now() + 120_000 }
+            this.pruneSsoTokenCache()
+        }
+    }
+
+    private pruneSsoTokenCache(): void {
+        const now = Date.now()
+        const keys = Object.keys(this.ssoTokenCache)
+        for (const key of keys) {
+            const entry = this.ssoTokenCache[key]
+            if (entry?.expiresAt && entry.expiresAt <= now) {
+                delete this.ssoTokenCache[key]
+            }
+        }
+        const remaining = Object.keys(this.ssoTokenCache)
+        const max = 200
+        if (remaining.length > max) {
+            remaining.slice(0, remaining.length - max).forEach((key) => {
+                delete this.ssoTokenCache[key]
+            })
         }
     }
 
@@ -93,7 +112,13 @@ export class CachePool {
                 }
             }
         } else {
-            return this.ssoTokenCache[ssoToken]
+            const entry = this.ssoTokenCache[ssoToken]
+            if (!entry) return undefined
+            if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+                delete this.ssoTokenCache[ssoToken]
+                return undefined
+            }
+            return entry.value !== undefined ? entry.value : entry
         }
         return undefined
     }

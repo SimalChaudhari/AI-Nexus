@@ -16,6 +16,7 @@ import {
   secondsToWatchedHours,
 } from './course-program-cpe-summary.util';
 import { SalesforceCpeComplianceService } from './salesforce-cpe-compliance.service';
+import { BoundedMap } from '../common/bounded-map';
 
 function isSectionProgressFkViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -67,10 +68,9 @@ function parseCoverageRangePairs(raw: unknown): [number, number][] {
   return out;
 }
 
-function mergeCoverageRanges(ranges: [number, number][]): [number, number][] {
+function mergeCoverageRanges(ranges: [number, number][], gapFillSec = 0.75): [number, number][] {
   if (!ranges.length) return [];
-  // Close tiny holes from client play/pause / poll jitter.
-  const GAP_FILL_SEC = 0.75;
+  const MAX_RANGES = 400;
   const sorted = ranges
     .map(([a, b]) => [Math.min(a, b), Math.max(a, b)] as [number, number])
     .filter(([s, e]) => e > s && Number.isFinite(s) && Number.isFinite(e))
@@ -78,8 +78,11 @@ function mergeCoverageRanges(ranges: [number, number][]): [number, number][] {
   const out: [number, number][] = [];
   for (const [s, e] of sorted) {
     const last = out[out.length - 1];
-    if (!last || s > last[1] + GAP_FILL_SEC) out.push([s, e]);
+    if (!last || s > last[1] + gapFillSec) out.push([s, e]);
     else last[1] = Math.max(last[1], e);
+  }
+  if (out.length > MAX_RANGES && gapFillSec < 32) {
+    return mergeCoverageRanges(out, Math.max(gapFillSec * 4, 4));
   }
   return out;
 }
@@ -176,6 +179,13 @@ function coverageMeasureSeconds(ranges: [number, number][], duration: number): n
 @Injectable()
 export class CourseSectionWatchProgressService {
   private readonly logger = new Logger(CourseSectionWatchProgressService.name);
+  private readonly lastCpeScheduleAt = new BoundedMap<string, number>(8_000);
+  private readonly programSummaryCache = new BoundedMap<
+    string,
+    { expiresAt: number; value: ProgramPillarWatchSummary }
+  >(200);
+  private static readonly CPE_HEARTBEAT_DEBOUNCE_MS = 45_000;
+  private static readonly PROGRAM_SUMMARY_CACHE_MS = 20_000;
 
   constructor(
     @InjectRepository(CourseSectionWatchProgressEntity)
@@ -761,6 +771,13 @@ export class CourseSectionWatchProgressService {
    * first become visible (0.5h+) or when those hours later change.
    */
   private schedulePillar3CpeSalesforceSync(userId: string, courseId: string): void {
+    const scheduleKey = `${userId}:${courseId}`;
+    const now = Date.now();
+    const lastAt = this.lastCpeScheduleAt.get(scheduleKey) || 0;
+    if (now - lastAt < CourseSectionWatchProgressService.CPE_HEARTBEAT_DEBOUNCE_MS) {
+      return;
+    }
+    this.lastCpeScheduleAt.set(scheduleKey, now);
     void this.syncPillar3CpeToSalesforce(userId, courseId).catch((error) => {
       this.logger.warn(
         `[Salesforce CPE] Pillar 3 sync failed for user=${userId} course=${courseId}: ${
@@ -915,6 +932,12 @@ export class CourseSectionWatchProgressService {
     userId: string,
     programId: string,
   ): Promise<ProgramPillarWatchSummary> {
+    const cacheKey = `${userId}:${programId}`;
+    const cached = this.programSummaryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+
     const courses = await this.courseRepository.find({
       where: { programId, isBundle: false },
       select: ['id', 'title', 'programPillarIndex', 'level', 'marketData', 'createdAt'],
@@ -1010,7 +1033,7 @@ export class CourseSectionWatchProgressService {
         });
     }
 
-    return {
+    const summary: ProgramPillarWatchSummary = {
       pillarBreakdown,
       totalWatchedSeconds,
       totalWatchedHours: secondsToWatchedHours(totalWatchedSeconds),
@@ -1019,6 +1042,11 @@ export class CourseSectionWatchProgressService {
       totalEarnedCpeHours,
       totalCpeHours: totalEarnedCpeHours,
     };
+    this.programSummaryCache.set(cacheKey, {
+      expiresAt: Date.now() + CourseSectionWatchProgressService.PROGRAM_SUMMARY_CACHE_MS,
+      value: summary,
+    });
+    return summary;
   }
 
   /**

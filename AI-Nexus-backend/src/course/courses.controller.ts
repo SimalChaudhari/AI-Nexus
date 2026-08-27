@@ -23,6 +23,7 @@ import {
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { largeUploadDiskStorage } from '../common/multer-disk.util';
 import { Response, Request } from 'express';
 import { UserRole } from '../user/users.entity';
 import { CourseService } from './courses.service';
@@ -125,7 +126,7 @@ const parseEnvPositiveNumber = (value: string | undefined, fallback: number): nu
 const IMAGE_LIMIT_BYTES =
     parseEnvPositiveNumber(process.env.UPLOAD_IMAGE_MAX_MB, 50) * 1024 * 1024;
 const SECTION_VIDEO_LIMIT_BYTES =
-    parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_MAX_GB, 20) * 1024 * 1024 * 1024;
+    parseEnvPositiveNumber(process.env.UPLOAD_SECTION_VIDEO_MAX_GB, 2) * 1024 * 1024 * 1024;
 
 const assessmentAdminFileFilter = (allowedExt: RegExp) =>
     (_req: unknown, file: Express.Multer.File, cb: (error: Error | null, accept: boolean) => void) => {
@@ -1996,7 +1997,7 @@ export class CourseController {
     @ApiOperation({ summary: 'Upload single course section video' })
     @UseInterceptors(
         FileInterceptor('video', {
-            storage: memoryStorage(),
+            storage: largeUploadDiskStorage('section-video'),
             limits: { fileSize: SECTION_VIDEO_LIMIT_BYTES },
             fileFilter: (_req, file, cb) => {
                 const allowed = /^video\/(mp4|webm|quicktime|x-msvideo|x-matroska)$/i.test(file.mimetype);

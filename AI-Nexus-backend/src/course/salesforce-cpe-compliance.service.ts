@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import axios from 'axios';
 import { UserEntity } from '../user/users.entity';
 import { OAuthAuthService } from '../auth/oauth-auth.service';
+import { BoundedMap, BoundedSet } from '../common/bounded-map';
 import { SalesforceCpeComplianceSyncEntity } from './salesforce-cpe-compliance-sync.entity';
 
 export type SalesforceCpeCompliancePayload = {
@@ -45,10 +46,10 @@ function toNumber(value: unknown): number {
 @Injectable()
 export class SalesforceCpeComplianceService {
   private readonly logger = new Logger(SalesforceCpeComplianceService.name);
-  private readonly inFlight = new Set<string>();
-  private readonly lastFingerprint = new Map<string, string>();
-  private readonly missingAccountWarned = new Set<string>();
-  private readonly lastFailureAt = new Map<string, number>();
+  private readonly inFlight = new BoundedSet<string>(2_000);
+  private readonly lastFingerprint = new BoundedMap<string, string>(8_000);
+  private readonly missingAccountWarned = new BoundedSet<string>(8_000);
+  private readonly lastFailureAt = new BoundedMap<string, number>(8_000);
   private static readonly FAILURE_RETRY_MS = 60_000;
 
   constructor(

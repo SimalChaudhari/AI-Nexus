@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { existsSync } from 'fs';
-import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
+import { mkdir, readFile, unlink, writeFile, copyFile } from 'fs/promises';
 import { extname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { In, IsNull, Not, Repository } from 'typeorm';
@@ -65,8 +65,8 @@ import {
 
 const AT_RISK_INACTIVE_DAYS = 7;
 const NUDGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const BULK_ENROLMENT_ZIP_MAX_BYTES = 500 * 1024 * 1024;
-const BULK_ENROLMENT_CSV_MAX_BYTES = 1024 * 1024 * 1024; // 1 GB
+const BULK_ENROLMENT_ZIP_MAX_BYTES = 100 * 1024 * 1024;
+const BULK_ENROLMENT_CSV_MAX_BYTES = 20 * 1024 * 1024;
 const BULK_ENROLMENT_CSV_MAX_ROWS = 2000;
 const BULK_ENROLMENT_SF_BATCH_SIZE = (() => {
   const parsed = Number(process.env.BULK_ENROLMENT_SF_BATCH_SIZE || 100);
@@ -2540,13 +2540,13 @@ export class CorporateService {
         percent: 100,
         label: 'Validation failed',
         status: 'error',
-        error: 'CSV file must be 1GB or smaller.',
+        error: 'CSV file must be 20MB or smaller.',
       });
       return {
         valid: false,
         fileName: String(file.originalname || ''),
         rowCount: 0,
-        errors: [{ type: 'file', message: 'CSV file must be 1GB or smaller.' }],
+        errors: [{ type: 'file', message: 'CSV file must be 20MB or smaller.' }],
         rows: [],
         summary: {
           requiredColumnsOk: false,
@@ -2895,7 +2895,7 @@ export class CorporateService {
         throw new BadRequestException('CSV or Excel file is required.');
       }
       if (file.size > BULK_ENROLMENT_CSV_MAX_BYTES) {
-        throw new BadRequestException('Upload file must be 1GB or smaller.');
+        throw new BadRequestException('Upload file must be 20MB or smaller.');
       }
       const original = String(file.originalname || '').toLowerCase();
       if (!this.isStaffEnrolmentSpreadsheetFile(original)) {
@@ -4848,11 +4848,12 @@ export class CorporateService {
   // ----------------------------------------------------------------------
 
   private assertZipFile(file?: Express.Multer.File) {
-    if (!file?.buffer?.length) {
+    const hasContent = Boolean(file?.path) || Boolean(file?.buffer?.length);
+    if (!file || !hasContent) {
       throw new BadRequestException('A .zip file is required');
     }
     if (file.size > BULK_ENROLMENT_ZIP_MAX_BYTES) {
-      throw new BadRequestException('ZIP file must be 500MB or smaller');
+      throw new BadRequestException('ZIP file must be 100MB or smaller');
     }
     const original = String(file.originalname || '');
     const ext = extname(original).toLowerCase();
@@ -4914,14 +4915,22 @@ export class CorporateService {
     for (const file of files) {
       this.assertZipFile(file);
       const storedFileName = `${randomUUID()}.zip`;
-      await writeFile(join(BULK_ENROLMENT_STORAGE_DIR, storedFileName), file.buffer);
+      const destPath = join(BULK_ENROLMENT_STORAGE_DIR, storedFileName);
+      if (file.path) {
+        await copyFile(file.path, destPath);
+        await unlink(file.path).catch(() => undefined);
+      } else if (file.buffer?.length) {
+        await writeFile(destPath, file.buffer);
+      } else {
+        throw new BadRequestException('A .zip file is required');
+      }
 
       const row = this.bulkEnrolmentUploadRepository.create({
         companyCode,
         uploadedByUserId: params.uploadedByUserId || null,
         originalFileName: String(file.originalname || 'bulk-enrolment.zip').slice(0, 255),
         storedFileName,
-        sizeBytes: file.size || file.buffer.length,
+        sizeBytes: file.size || file.buffer?.length || 0,
         mimeType: file.mimetype || 'application/zip',
       });
       savedRows.push(await this.bulkEnrolmentUploadRepository.save(row));

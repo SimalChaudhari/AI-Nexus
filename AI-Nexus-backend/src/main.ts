@@ -198,9 +198,11 @@ async function bootstrap() {
     app.use('/uploads', express.static(join(process.cwd(), 'public', 'uploads')));
 
     // Webhook route needs raw body for signature verification; skip json parser for it
+    const jsonBodyLimitMb = Number(process.env.JSON_BODY_LIMIT_MB);
+    const jsonBodyLimit = `${Number.isFinite(jsonBodyLimitMb) && jsonBodyLimitMb > 0 ? jsonBodyLimitMb : 8}mb`;
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (req.path === '/api/payments/webhook') return next();
-      express.json({ limit: '50mb' })(req, res, next);
+      express.json({ limit: jsonBodyLimit })(req, res, next);
     });
     app.use(
       '/api/payments/webhook',
@@ -218,7 +220,7 @@ async function bootstrap() {
       },
     );
 
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    app.use(express.urlencoded({ limit: jsonBodyLimit, extended: true }));
 
     registerExpressErrorMiddleware(app);
 
@@ -234,36 +236,51 @@ async function bootstrap() {
       });
     });
 
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('AI-Nexus API')
-      .setDescription('Swagger documentation for all AI-Nexus backend APIs')
-      .setVersion('1.0.0')
-      .addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          name: 'Authorization',
-          description: 'Enter JWT token',
-          in: 'header',
-        },
-        'bearer',
-      )
-      .build();
+    const enableSwagger =
+      isTrue(process.env.ENABLE_SWAGGER) || nodeEnv !== 'production';
+    if (enableSwagger) {
+      const swaggerConfig = new DocumentBuilder()
+        .setTitle('AI-Nexus API')
+        .setDescription('Swagger documentation for all AI-Nexus backend APIs')
+        .setVersion('1.0.0')
+        .addBearerAuth(
+          {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            name: 'Authorization',
+            description: 'Enter JWT token',
+            in: 'header',
+          },
+          'bearer',
+        )
+        .build();
 
-    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('docs', app, swaggerDocument, {
-      useGlobalPrefix: true,
-      swaggerOptions: {
-        persistAuthorization: true,
-      },
-    });
+      const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+      SwaggerModule.setup('docs', app, swaggerDocument, {
+        useGlobalPrefix: true,
+        swaggerOptions: {
+          persistAuthorization: true,
+        },
+      });
+    }
 
     await app.listen(port, bindHost);
     const httpServer = app.getHttpServer();
-    httpServer.setTimeout(0);
-    if (typeof httpServer.requestTimeout === 'number') httpServer.requestTimeout = 0;
-    if (typeof httpServer.headersTimeout === 'number') httpServer.headersTimeout = 0;
+    // Video uploads can run several minutes; never leave sockets with timeout=0 (leaks connections).
+    const httpTimeoutMs = Number(process.env.HTTP_TIMEOUT_MS);
+    const timeoutMs =
+      Number.isFinite(httpTimeoutMs) && httpTimeoutMs >= 0
+        ? httpTimeoutMs
+        : 10 * 60 * 1000;
+    httpServer.setTimeout(timeoutMs);
+    if (typeof httpServer.requestTimeout === 'number') httpServer.requestTimeout = timeoutMs;
+    if (typeof httpServer.headersTimeout === 'number') {
+      httpServer.headersTimeout = timeoutMs + 10_000;
+    }
+    if (typeof httpServer.keepAliveTimeout === 'number') {
+      httpServer.keepAliveTimeout = 65_000;
+    }
     const scheme = httpsEnabled ? 'https' : 'http';
     console.log('[SSL] NODE_ENV:', nodeEnv ?? '(not set)');
     console.log('[SSL] SSL_ENABLED:', sslEnabled);
@@ -276,7 +293,9 @@ async function bootstrap() {
     console.log(`Server is running on: ${scheme}://${host}:${port}`);
     console.log(`Health check: ${scheme}://${host}:${port}/`);
     console.log(`API routes: ${scheme}://${host}:${port}/api`);
-    console.log(`Swagger docs: ${scheme}://${host}:${port}/api/docs`);
+    if (enableSwagger) {
+      console.log(`Swagger docs: ${scheme}://${host}:${port}/api/docs`);
+    }
 
   } catch (error) {
     bootstrapLogger.error(
