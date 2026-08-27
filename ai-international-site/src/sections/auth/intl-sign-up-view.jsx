@@ -188,6 +188,7 @@ export function IntlSignUpView() {
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoLocksPlan, setPromoLocksPlan] = useState(false);
   const [promoMessage, setPromoMessage] = useState('');
+  const [promoCountryMismatch, setPromoCountryMismatch] = useState(false);
   const [promoValidating, setPromoValidating] = useState(false);
   const [referralResolved, setReferralResolved] = useState(!Boolean(lockedReferralCode));
   const [detectingCountry, setDetectingCountry] = useState(true);
@@ -327,6 +328,7 @@ export function IntlSignUpView() {
       if (!code) {
         setPromoApplied(false);
         setPromoLocksPlan(false);
+        setPromoCountryMismatch(false);
         setPromoMessage('Enter a code to apply.');
         appliedPromoInputRef.current = '';
         if (promoAssignedPlanRef.current) {
@@ -336,6 +338,24 @@ export function IntlSignUpView() {
         return;
       }
 
+      const applyPricingFromResult = (result, applied) => {
+        if (result?.currency || result?.payableAmount != null || result?.originalAmount != null) {
+          setPricing((prev) => ({
+            ...prev,
+            currency: result.currency || prev.currency,
+            baseAmount: Number(result.originalAmount) || prev.baseAmount,
+            baseAmountSgd: Number(result.baseAmountSgd) || prev.baseAmountSgd,
+            totalAmount: Number(result.payableAmount) || prev.totalAmount,
+            voucherDiscountAmount:
+              Number(result.voucherDiscountAmount ?? result.payableAmount) ||
+              prev.voucherDiscountAmount,
+            exchangeRate: Number(result.exchangeRate) || prev.exchangeRate,
+            promoApplied: applied,
+            promoFixed: Boolean(result.promoFixed),
+          }));
+        }
+      };
+
       setPromoValidating(true);
       try {
         const result = await validateIntlPromoCode({
@@ -344,6 +364,7 @@ export function IntlSignUpView() {
           membershipType:
             getValues('membershipType') === 'student' ? 'student' : 'full',
         });
+        const countryMismatch = Boolean(result?.countryMismatch);
 
         if (result?.valid || result?.discountApplied) {
           const exactCode = String(result?.appliedCode || code).trim().toUpperCase();
@@ -363,6 +384,7 @@ export function IntlSignUpView() {
             );
           }
           setPromoLocksPlan(locksPlan);
+          setPromoCountryMismatch(false);
           setPromoApplied(true);
           setPromoMessage(
             result?.message ||
@@ -375,28 +397,17 @@ export function IntlSignUpView() {
               .getElementById('intl-signup-details')
               ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 80);
-          if (result?.currency || result?.payableAmount != null) {
-            setPricing((prev) => ({
-              ...prev,
-              currency: result.currency || prev.currency,
-              baseAmount: Number(result.originalAmount) || prev.baseAmount,
-              baseAmountSgd: Number(result.baseAmountSgd) || prev.baseAmountSgd,
-              totalAmount: Number(result.payableAmount) || prev.totalAmount,
-              voucherDiscountAmount:
-                Number(result.voucherDiscountAmount ?? result.payableAmount) ||
-                prev.voucherDiscountAmount,
-              exchangeRate: Number(result.exchangeRate) || prev.exchangeRate,
-              promoApplied: true,
-              promoFixed: Boolean(result.promoFixed),
-            }));
-          }
+          applyPricingFromResult(result, true);
         } else {
-          appliedPromoInputRef.current = '';
+          appliedPromoInputRef.current = code;
           setPromoApplied(false);
+          setPromoCountryMismatch(countryMismatch);
           setPromoLocksPlan(false);
-          if (promoAssignedPlanRef.current) {
+          if (!countryMismatch && promoAssignedPlanRef.current) {
             promoAssignedPlanRef.current = false;
             setValue('membershipType', '', { shouldValidate: false });
+          } else {
+            promoAssignedPlanRef.current = false;
           }
           setPromoMessage(
             result?.message ||
@@ -404,11 +415,13 @@ export function IntlSignUpView() {
               result?.voucherMessage ||
               'This code is invalid or expired. The standard fee applies.',
           );
+          applyPricingFromResult(result, false);
         }
       } catch (error) {
-        appliedPromoInputRef.current = '';
+        appliedPromoInputRef.current = code;
         setPromoApplied(false);
         setPromoLocksPlan(false);
+        setPromoCountryMismatch(false);
         if (promoAssignedPlanRef.current) {
           promoAssignedPlanRef.current = false;
           setValue('membershipType', '', { shouldValidate: false });
@@ -429,10 +442,20 @@ export function IntlSignUpView() {
   );
 
   useEffect(() => {
-    if (!promoApplied || !appliedPromoInputRef.current) return undefined;
+    const code = String(
+      appliedPromoInputRef.current || getValues('promoCode') || '',
+    ).trim().toUpperCase();
+    if (!code || !String(countryOfResidence || '').trim()) return undefined;
+    setPromoApplied(false);
+    applyPromoCode(code);
+    return undefined;
+  }, [countryOfResidence]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!promoApplied || promoLocksPlan || !appliedPromoInputRef.current) return undefined;
     applyPromoCode(appliedPromoInputRef.current);
     return undefined;
-  }, [countryOfResidence, promoLocksPlan ? null : membershipTypeValue]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [membershipTypeValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const normalized = String(promoCodeValue || '').trim().toUpperCase();
@@ -440,6 +463,7 @@ export function IntlSignUpView() {
       appliedPromoInputRef.current = '';
       setPromoApplied(false);
       setPromoLocksPlan(false);
+      setPromoCountryMismatch(false);
       setPromoMessage('');
       if (promoAssignedPlanRef.current) {
         promoAssignedPlanRef.current = false;
@@ -1245,8 +1269,18 @@ export function IntlSignUpView() {
                   width: 1,
                   p: 1.25,
                   borderRadius: 1.5,
-                  border: `1px solid ${promoApplied ? alpha('#0f766e', 0.3) : alpha(NAVY, 0.12)}`,
-                  bgcolor: promoApplied ? alpha('#0f766e', 0.04) : alpha(NAVY, 0.02),
+                  border: `1px solid ${
+                    promoApplied
+                      ? alpha('#0f766e', 0.3)
+                      : promoCountryMismatch
+                        ? alpha('#b45309', 0.35)
+                        : alpha(NAVY, 0.12)
+                  }`,
+                  bgcolor: promoApplied
+                    ? alpha('#0f766e', 0.04)
+                    : promoCountryMismatch
+                      ? alpha('#b45309', 0.06)
+                      : alpha(NAVY, 0.02),
                 }}
               >
                 <Stack spacing={0.85}>
@@ -1256,13 +1290,27 @@ export function IntlSignUpView() {
                     </Typography>
                     <Chip
                       size="small"
-                      label={promoApplied ? 'Verified' : 'Optional'}
+                      label={
+                        promoApplied
+                          ? 'Verified'
+                          : promoCountryMismatch
+                            ? 'Not eligible'
+                            : 'Optional'
+                      }
                       sx={{
                         height: 18,
                         fontWeight: 700,
                         fontSize: 10,
-                        bgcolor: promoApplied ? alpha('#0f766e', 0.12) : alpha(NAVY, 0.08),
-                        color: promoApplied ? '#0f766e' : NAVY,
+                        bgcolor: promoApplied
+                          ? alpha('#0f766e', 0.12)
+                          : promoCountryMismatch
+                            ? alpha('#b45309', 0.14)
+                            : alpha(NAVY, 0.08),
+                        color: promoApplied
+                          ? '#0f766e'
+                          : promoCountryMismatch
+                            ? '#b45309'
+                            : NAVY,
                       }}
                     />
                   </Stack>
@@ -1351,6 +1399,23 @@ export function IntlSignUpView() {
                     <Typography sx={{ color: alpha(NAVY, 0.65), fontSize: 11.5 }}>
                       Verifying…
                     </Typography>
+                  ) : promoCountryMismatch && promoMessage ? (
+                    <Alert
+                      severity="warning"
+                      icon={false}
+                      sx={{
+                        py: 0.5,
+                        px: 1,
+                        fontSize: 11.5,
+                        lineHeight: 1.4,
+                        fontWeight: 600,
+                        color: '#92400e',
+                        bgcolor: alpha('#f59e0b', 0.12),
+                        '& .MuiAlert-message': { p: 0 },
+                      }}
+                    >
+                      {promoMessage}
+                    </Alert>
                   ) : promoMessage ? (
                     <Typography
                       sx={{

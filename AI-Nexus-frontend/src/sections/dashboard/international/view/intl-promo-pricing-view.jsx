@@ -130,6 +130,13 @@ function formatMoney(value) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function formatMoneyWithCurrency(value, currency) {
+  const amount = formatMoney(value);
+  if (amount === '—') return '—';
+  const code = String(currency || '').trim().toUpperCase();
+  return code ? `${amount} ${code}` : amount;
+}
+
 function formatPromoPriceLabel(row, plan, isIntl) {
   if (!row) return '—';
   if (!isIntl) {
@@ -137,11 +144,13 @@ function formatPromoPriceLabel(row, plan, isIntl) {
   }
   const full = toAmount(row.discountPrice);
   const student = toAmount(row.studentDiscountPrice);
-  if (plan === 'student') return student != null ? formatMoney(student) : '—';
-  if (plan === 'full') return full != null ? formatMoney(full) : '—';
-  if (full != null && student != null) return `F ${formatMoney(full)} · S ${formatMoney(student)}`;
-  if (student != null) return `S ${formatMoney(student)}`;
-  if (full != null) return `F ${formatMoney(full)}`;
+  if (plan === 'student') return student != null ? formatMoneyWithCurrency(student, row.currency) : '—';
+  if (plan === 'full') return full != null ? formatMoneyWithCurrency(full, row.currency) : '—';
+  if (full != null && student != null) {
+    return `F ${formatMoneyWithCurrency(full, row.currency)} · S ${formatMoneyWithCurrency(student, row.currency)}`;
+  }
+  if (student != null) return `S ${formatMoneyWithCurrency(student, row.currency)}`;
+  if (full != null) return `F ${formatMoneyWithCurrency(full, row.currency)}`;
   return '—';
 }
 
@@ -844,7 +853,7 @@ export function CountryPricingManagementPanel({
       toast.error('Default base price is required');
       return;
     }
-    if (discountPrice == null) {
+    if (!isIntlSite && discountPrice == null) {
       toast.error('Default promo price is required');
       return;
     }
@@ -855,7 +864,6 @@ export function CountryPricingManagementPanel({
             ...settings,
             baseAmountSgd: basePrice,
             studentAmountSgd: toAmount(defaultForm.studentAmount) ?? settings?.studentAmountSgd ?? 150,
-            voucherDiscountAmountSgd: discountPrice,
           }
         : {
             ...settings,
@@ -1014,10 +1022,12 @@ export function CountryPricingManagementPanel({
               Default Price
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Used on signup when the selected country has no base or discount price set below.
+              {isIntlSite
+                ? 'Used on signup when the selected country has no Full / Role or Student base price set below.'
+                : 'Used on signup when the selected country has no base or discount price set below.'}
             </Typography>
             <Grid container spacing={2} alignItems="flex-end">
-              <Grid item xs={12} sm={6} md={isIntlSite ? 3 : 4}>
+              <Grid item xs={12} sm={6} md={isIntlSite ? 4 : 4}>
                 <TextField
                   size="small"
                   fullWidth
@@ -1028,10 +1038,19 @@ export function CountryPricingManagementPanel({
                     setDefaultForm((prev) => ({ ...prev, baseAmount: event.target.value }))
                   }
                   inputProps={{ min: 0, step: '1' }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                          SGD
+                        </Typography>
+                      </InputAdornment>
+                    ),
+                  }}
                 />
               </Grid>
               {isIntlSite ? (
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={4}>
                   <TextField
                     size="small"
                     fullWidth
@@ -1042,6 +1061,15 @@ export function CountryPricingManagementPanel({
                       setDefaultForm((prev) => ({ ...prev, studentAmount: event.target.value }))
                     }
                     inputProps={{ min: 0, step: '1' }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                            SGD
+                          </Typography>
+                        </InputAdornment>
+                      ),
+                    }}
                   />
                 </Grid>
               ) : (
@@ -1059,20 +1087,31 @@ export function CountryPricingManagementPanel({
                   />
                 </Grid>
               )}
-              <Grid item xs={12} sm={6} md={isIntlSite ? 3 : 4}>
+              {!isIntlSite ? (
+              <Grid item xs={12} sm={6} md={4}>
                 <TextField
                   size="small"
                   fullWidth
                   type="number"
-                  label={isIntlSite ? 'Default promo (SGD)' : 'Default promo price (SGD)'}
+                  label="Default promo price (SGD)"
                   value={defaultForm.discountAmount}
                   onChange={(event) =>
                     setDefaultForm((prev) => ({ ...prev, discountAmount: event.target.value }))
                   }
                   inputProps={{ min: 0, step: '1' }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                          SGD
+                        </Typography>
+                      </InputAdornment>
+                    ),
+                  }}
                 />
               </Grid>
-              <Grid item xs={12} md={isIntlSite ? 3 : 12}>
+              ) : null}
+              <Grid item xs={12} md={isIntlSite ? 4 : 12}>
                 <LoadingButton
                   variant="contained"
                   loading={savingDefaults}
@@ -1128,9 +1167,13 @@ export function CountryPricingManagementPanel({
                           );
                           const plan = String(voucher.membershipType || '').toLowerCase();
                           const priceLabel = !countryList?.length
-                            ? (defaultPromoAmount ? `SGD ${formatMoney(defaultPromoAmount)}` : '—')
+                            ? (!isIntlSite && defaultPromoAmount
+                                ? `SGD ${formatMoney(defaultPromoAmount)}`
+                                : '—')
                             : countryList.length === 1
-                              ? `${countryList[0].currency || ''} ${formatPromoPriceLabel(countryList[0], plan, isIntlSite)}`.trim()
+                              ? (isIntlSite
+                                  ? formatPromoPriceLabel(countryList[0], plan, true)
+                                  : `${countryList[0].currency || ''} ${formatPromoPriceLabel(countryList[0], plan, false)}`.trim())
                               : `${countryList.length} prices`;
                           return (
                             <TableRow
@@ -1462,14 +1505,14 @@ export function CountryPricingManagementPanel({
                         <TableCell>Currency</TableCell>
                         <TableCell align="right">{isIntlSite ? 'Full / Role' : 'Base Price'}</TableCell>
                         {isIntlSite ? <TableCell align="right">Student</TableCell> : null}
-                        <TableCell>Discount / Special Price</TableCell>
+                        {!isIntlSite ? <TableCell>Discount / Special Price</TableCell> : null}
                         <TableCell>Status</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {paginatedRows.map((row, index) => {
-                        const signupLink = row.promoCode
+                        const signupLink = !isIntlSite && row.promoCode
                           ? buildFullReferralLink(websiteBaseUrl, row.promoCode, referralLinkPath)
                           : '';
                         return (
@@ -1492,21 +1535,20 @@ export function CountryPricingManagementPanel({
                           </TableCell>
                           <TableCell>{row.currency}</TableCell>
                           <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                            {formatMoney(row.basePrice)}
+                            {formatMoneyWithCurrency(row.basePrice, row.currency)}
                           </TableCell>
                           {isIntlSite ? (
                             <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                              {formatMoney(row.studentBasePrice)}
+                              {formatMoneyWithCurrency(row.studentBasePrice, row.currency)}
                             </TableCell>
                           ) : null}
+                          {!isIntlSite ? (
                           <TableCell>
                             {row.discountPrice || row.studentDiscountPrice ? (
                               <Stack spacing={0.25}>
                                 <Stack direction="row" spacing={0.75} alignItems="center">
                                   <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                                    {isIntlSite
-                                      ? formatPromoPriceLabel(row, 'both', true)
-                                      : formatMoney(row.discountPrice)}
+                                    {formatMoneyWithCurrency(row.discountPrice, row.currency)}
                                   </Typography>
                                 {row.promoCode ? (
                                     <>
@@ -1539,6 +1581,7 @@ export function CountryPricingManagementPanel({
                               '—'
                             )}
                           </TableCell>
+                          ) : null}
                           <TableCell>
                             <Switch
                               size="small"
@@ -1559,7 +1602,7 @@ export function CountryPricingManagementPanel({
                       })}
                       {!filteredRows.length ? (
                         <TableRow>
-                          <TableCell colSpan={isIntlSite ? 8 : 7} align="center">
+                          <TableCell colSpan={isIntlSite ? 7 : 7} align="center">
                             <Typography variant="body2" color="text.secondary">
                               No countries found
                             </Typography>
@@ -1628,6 +1671,15 @@ export function CountryPricingManagementPanel({
                         setCountryForm((prev) => ({ ...prev, basePrice: event.target.value }))
                       }
                       inputProps={{ min: 0, step: '1' }}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                              {selectedCountry.currency}
+                            </Typography>
+                          </InputAdornment>
+                        ),
+                      }}
                     />
                     {isIntlSite ? (
                       <TextField
@@ -1640,6 +1692,15 @@ export function CountryPricingManagementPanel({
                           setCountryForm((prev) => ({ ...prev, studentBasePrice: event.target.value }))
                         }
                         inputProps={{ min: 0, step: '1' }}
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                                {selectedCountry.currency}
+                              </Typography>
+                            </InputAdornment>
+                          ),
+                        }}
                       />
                     ) : null}
                     <FormControlLabel
@@ -1851,7 +1912,7 @@ export function CountryPricingManagementPanel({
               const converted = showStudentPrice && !showFullPrice ? convertedStudent : convertedFull;
               const displaySource = hasCountryPrice ? 'Set' : converted != null ? 'Converted' : '—';
               const countryPriceLabel = displayAmount != null
-                ? `${country.currency} ${formatMoney(displayAmount)}`
+                ? formatMoneyWithCurrency(displayAmount, country.currency)
                 : loadingFx
                   ? 'Loading…'
                   : '—';
@@ -1894,7 +1955,7 @@ export function CountryPricingManagementPanel({
                           Default (SGD)
                         </Typography>
                         <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                          {formatMoney(defaultSgdLabel)}
+                          {formatMoneyWithCurrency(defaultSgdLabel, 'SGD')}
                         </Typography>
                       </Grid>
                       <Grid item xs={6} sm={8}>

@@ -702,7 +702,13 @@ export class IntlPaymentService {
     const amounts = await this.getPricingAmounts();
     const assignedCountries = countriesAssignedToPromo(amounts.countryPricing, appliedCode);
     const selectedCountry = resolveCountryCode(countryOfResidence);
-    if (discountApplied && assignedCountries.length && selectedCountry && !assignedCountries.includes(selectedCountry)) {
+    const countryMismatch = Boolean(
+      discountApplied
+      && assignedCountries.length
+      && selectedCountry
+      && !assignedCountries.includes(selectedCountry),
+    );
+    if (countryMismatch) {
       discountApplied = false;
     }
     const voucherMembershipType = discountApplied
@@ -720,13 +726,14 @@ export class IntlPaymentService {
       membershipType,
       discountApplied ? appliedCode : null,
     );
+    const planLabel = membershipType === 'student' ? 'Student' : 'Full / Role';
 
     const message = discountApplied
       ? locksMembership
-        ? `Promo code applied. ${membershipType === 'student' ? 'Student' : 'Full / Role'} plan assigned.`
+        ? `Promo code applied. ${planLabel} plan assigned.`
         : 'Promo code applied. Choose Student or Full / Role — this code works for both.'
-      : assignedCountries.length && selectedCountry && !assignedCountries.includes(selectedCountry)
-        ? 'This code is not valid for the selected country.'
+      : countryMismatch
+        ? `You are not eligible for this promo for this country. The standard ${planLabel} price applies.`
         : affiliatePricing?.affiliateMessage ||
           affiliatePricing?.voucherMessage ||
           'This code is invalid or expired. The standard fee applies.';
@@ -734,6 +741,7 @@ export class IntlPaymentService {
     return {
       valid: discountApplied,
       discountApplied,
+      countryMismatch,
       appliedCode: discountApplied ? appliedCode : null,
       codeType: affiliatePricing?.codeType || null,
       affiliateCode: affiliatePricing?.affiliateCode || null,
