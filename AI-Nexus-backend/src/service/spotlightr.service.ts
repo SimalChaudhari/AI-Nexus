@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+import { readFile, unlink } from 'fs/promises';
 
 const SPOTLIGHTR_CREATE_VIDEO_URL = 'https://api.spotlightr.com/api/createVideo';
 const SPOTLIGHTR_LIST_VIDEOS_URL = 'https://api.spotlightr.com/api/videos';
@@ -43,6 +44,7 @@ export class SpotlightrService {
     private readonly settingsApplied = new Set<string>();
     private readonly inflightLookups = new Map<string, Promise<Record<string, unknown> | null>>();
     private readonly inflightPlayback = new Map<string, Promise<SpotlightrPlaybackPayload>>();
+    private static readonly CACHE_MAX_ENTRIES = 200;
     private consecutiveApiFailures = 0;
     private circuitOpenUntil = 0;
     private circuitOpenLoggedAt = 0;
@@ -97,8 +99,21 @@ export class SpotlightrService {
         return entry.value;
     }
 
+    private pruneCache<T>(map: Map<string, CacheEntry<T>>): void {
+        const now = Date.now();
+        for (const [cacheKey, entry] of map) {
+            if (entry.expiresAt <= now) map.delete(cacheKey);
+        }
+        while (map.size > SpotlightrService.CACHE_MAX_ENTRIES) {
+            const oldest = map.keys().next().value;
+            if (oldest === undefined) break;
+            map.delete(oldest);
+        }
+    }
+
     private setCached<T>(map: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs: number): void {
         map.set(key, { value, expiresAt: Date.now() + ttlMs });
+        this.pruneCache(map);
     }
 
     async uploadVideo(file: Express.Multer.File, name?: string): Promise<string> {
@@ -119,7 +134,17 @@ export class SpotlightrService {
             form.append('videoGroup', videoGroup);
         }
 
-        const blob = new Blob([Uint8Array.from(file.buffer)], { type: file.mimetype || 'video/mp4' });
+        const blobSource = file.buffer?.length
+            ? file.buffer
+            : file.path
+              ? await readFile(file.path)
+              : null;
+        if (!blobSource?.length) {
+            throw new Error('Empty video upload');
+        }
+        const blob = new Blob([blobSource as unknown as BlobPart], {
+            type: file.mimetype || 'video/mp4',
+        });
         form.append('file', blob, file.originalname || 'video.mp4');
 
         try {
@@ -147,6 +172,10 @@ export class SpotlightrService {
                   : 'Spotlightr upload failed';
             this.logger.error(`Spotlightr upload failed: ${message}`);
             throw new Error(message);
+        } finally {
+            if (file.path) {
+                await unlink(file.path).catch(() => undefined);
+            }
         }
     }
 
@@ -285,9 +314,17 @@ export class SpotlightrService {
             forwardSeekDisabled: false,
         });
         if (updated && numericId) {
-            this.settingsApplied.add(numericId);
+            this.noteSettingsApplied(numericId);
         }
         return updated;
+    }
+
+    private noteSettingsApplied(numericId: string): void {
+        this.settingsApplied.add(numericId);
+        if (this.settingsApplied.size > SpotlightrService.CACHE_MAX_ENTRIES * 10) {
+            const oldest = this.settingsApplied.values().next().value;
+            if (oldest !== undefined) this.settingsApplied.delete(oldest);
+        }
     }
 
     private extractWatchUrlVideoId(watchUrl: string): string | null {
@@ -321,7 +358,7 @@ export class SpotlightrService {
                 { timeout: API_TIMEOUT_MS },
             );
             this.logger.log(`Spotlightr player settings updated for video id=${numericId}`);
-            this.settingsApplied.add(numericId);
+            this.noteSettingsApplied(numericId);
             this.noteApiSuccess();
             return true;
         } catch (error) {

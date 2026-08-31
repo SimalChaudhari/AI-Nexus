@@ -15,6 +15,8 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { GlobalExceptionFilter } from './utils/global-exception.filter';
 import { registerExpressErrorMiddleware } from './utils/express-error.middleware';
+import { getAllowedCorsOrigins, requireJwtSecret } from './common/cors-origins.util';
+import { authRateLimitExpress } from './common/auth-rate-limit.middleware';
 
 function resolveSslPaths(): { keyPath: string; certPath: string } | null {
   const sslDir = join(process.cwd(), 'ssl');
@@ -68,6 +70,7 @@ const bootstrapLogger = new Logger('Bootstrap');
 
 async function bootstrap() {
   try {
+    requireJwtSecret();
     const nodeEnv = process.env.NODE_ENV;
     const isDevelopment = nodeEnv === 'development';
     const port = Number(process.env.PORT) || (isDevelopment ? 5000 : 3000);
@@ -113,72 +116,17 @@ async function bootstrap() {
 
     app.use(cookieParser());
 
-    // Enable CORS — include Flowise browser origin (often different port than main SPA)
-    const configuredOrigins = (process.env.FRONTEND_URLS || '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean);
-    const extraCorsOrigins = (process.env.CORS_EXTRA_ORIGINS || '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean);
-    const fallbackOrigin = process.env.FRONTEND_URL?.trim();
-    const intlOrigin = process.env.INTL_FRONTEND_URL?.trim().replace(/\/$/, '') || '';
-    const prodDefaultOrigin = nodeEnv === 'production' ? 'https://ainexus.isca.org.sg' : '';
-    const baseAllowedOrigins = configuredOrigins.length
-      ? configuredOrigins
-      : [fallbackOrigin || prodDefaultOrigin].filter(Boolean);
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('X-XSS-Protection', '0');
+      res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+      next();
+    });
 
-    const originsFromFlowiseEnv: string[] = [];
-    for (const key of ['FLOWISE_URL', 'VITE_FLOWISE_URL', 'FLOWISE_INTERNAL_URL'] as const) {
-      const raw = process.env[key]?.trim();
-      if (!raw) continue;
-      try {
-        originsFromFlowiseEnv.push(new URL(raw).origin);
-      } catch {
-        // ignore invalid URL
-      }
-    }
-
-    const devLocalOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:3003',
-      'https://localhost:3000',
-      'https://localhost:3003',
-      'http://localhost:3030',
-      'http://localhost:8080',
-      'http://localhost:5173',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-      'http://127.0.0.1:3002',
-      'http://127.0.0.1:3003',
-      'https://127.0.0.1:3000',
-      'https://127.0.0.1:3003',
-      'http://127.0.0.1:3030',
-      'http://127.0.0.1:8080',
-      'http://127.0.0.1:5173',
-    ];
-    const configuredFlowisePort = (process.env.FLOWISE_PORT || '3002').trim();
-    const productionFlowiseOrigins = nodeEnv === 'production'
-      ? [
-          `https://${host}:${configuredFlowisePort}`,
-          `http://${host}:${configuredFlowisePort}`,
-        ]
-      : [];
-    const allowedOrigins = Array.from(
-      new Set([
-        ...baseAllowedOrigins,
-        ...extraCorsOrigins,
-        ...(intlOrigin ? [intlOrigin] : []),
-        ...originsFromFlowiseEnv,
-        ...productionFlowiseOrigins,
-        ...(nodeEnv === 'production' && prodDefaultOrigin ? [prodDefaultOrigin] : []),
-        ...(isDevelopment ? devLocalOrigins : []),
-      ]),
-    );
-    const allowAnyOrigin = allowedOrigins.length === 0;
+    const allowedOrigins = getAllowedCorsOrigins();
+    const allowAnyOrigin = allowedOrigins.length === 0 && isDevelopment;
 
     app.enableCors({
       origin: (origin, callback) => {
@@ -194,13 +142,22 @@ async function bootstrap() {
       credentials: !allowAnyOrigin,
     });
 
-    // Serve static files from public/uploads directory
-    app.use('/uploads', express.static(join(process.cwd(), 'public', 'uploads')));
+    app.use('/api/auth', authRateLimitExpress);
+
+    app.use(
+      '/uploads',
+      express.static(join(process.cwd(), 'public', 'uploads'), {
+        index: false,
+        dotfiles: 'deny',
+      }),
+    );
 
     // Webhook route needs raw body for signature verification; skip json parser for it
+    const jsonBodyLimitMb = Number(process.env.JSON_BODY_LIMIT_MB);
+    const jsonBodyLimit = `${Number.isFinite(jsonBodyLimitMb) && jsonBodyLimitMb > 0 ? jsonBodyLimitMb : 8}mb`;
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (req.path === '/api/payments/webhook') return next();
-      express.json({ limit: '50mb' })(req, res, next);
+      express.json({ limit: jsonBodyLimit })(req, res, next);
     });
     app.use(
       '/api/payments/webhook',
@@ -218,7 +175,7 @@ async function bootstrap() {
       },
     );
 
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    app.use(express.urlencoded({ limit: jsonBodyLimit, extended: true }));
 
     registerExpressErrorMiddleware(app);
 
@@ -234,36 +191,51 @@ async function bootstrap() {
       });
     });
 
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('AI-Nexus API')
-      .setDescription('Swagger documentation for all AI-Nexus backend APIs')
-      .setVersion('1.0.0')
-      .addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          name: 'Authorization',
-          description: 'Enter JWT token',
-          in: 'header',
-        },
-        'bearer',
-      )
-      .build();
+    const enableSwagger =
+      isTrue(process.env.ENABLE_SWAGGER) || nodeEnv !== 'production';
+    if (enableSwagger) {
+      const swaggerConfig = new DocumentBuilder()
+        .setTitle('AI-Nexus API')
+        .setDescription('Swagger documentation for all AI-Nexus backend APIs')
+        .setVersion('1.0.0')
+        .addBearerAuth(
+          {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            name: 'Authorization',
+            description: 'Enter JWT token',
+            in: 'header',
+          },
+          'bearer',
+        )
+        .build();
 
-    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('docs', app, swaggerDocument, {
-      useGlobalPrefix: true,
-      swaggerOptions: {
-        persistAuthorization: true,
-      },
-    });
+      const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+      SwaggerModule.setup('docs', app, swaggerDocument, {
+        useGlobalPrefix: true,
+        swaggerOptions: {
+          persistAuthorization: true,
+        },
+      });
+    }
 
     await app.listen(port, bindHost);
     const httpServer = app.getHttpServer();
-    httpServer.setTimeout(0);
-    if (typeof httpServer.requestTimeout === 'number') httpServer.requestTimeout = 0;
-    if (typeof httpServer.headersTimeout === 'number') httpServer.headersTimeout = 0;
+    // Video uploads can run several minutes; never leave sockets with timeout=0 (leaks connections).
+    const httpTimeoutMs = Number(process.env.HTTP_TIMEOUT_MS);
+    const timeoutMs =
+      Number.isFinite(httpTimeoutMs) && httpTimeoutMs >= 0
+        ? httpTimeoutMs
+        : 10 * 60 * 1000;
+    httpServer.setTimeout(timeoutMs);
+    if (typeof httpServer.requestTimeout === 'number') httpServer.requestTimeout = timeoutMs;
+    if (typeof httpServer.headersTimeout === 'number') {
+      httpServer.headersTimeout = timeoutMs + 10_000;
+    }
+    if (typeof httpServer.keepAliveTimeout === 'number') {
+      httpServer.keepAliveTimeout = 65_000;
+    }
     const scheme = httpsEnabled ? 'https' : 'http';
     console.log('[SSL] NODE_ENV:', nodeEnv ?? '(not set)');
     console.log('[SSL] SSL_ENABLED:', sslEnabled);
@@ -276,7 +248,9 @@ async function bootstrap() {
     console.log(`Server is running on: ${scheme}://${host}:${port}`);
     console.log(`Health check: ${scheme}://${host}:${port}/`);
     console.log(`API routes: ${scheme}://${host}:${port}/api`);
-    console.log(`Swagger docs: ${scheme}://${host}:${port}/api/docs`);
+    if (enableSwagger) {
+      console.log(`Swagger docs: ${scheme}://${host}:${port}/api/docs`);
+    }
 
   } catch (error) {
     bootstrapLogger.error(

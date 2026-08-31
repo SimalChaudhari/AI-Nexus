@@ -4,15 +4,12 @@ import {
   SubscribeMessage,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { SOCKET_IO_GATEWAY_OPTIONS } from '../common/socket-io.options';
 
 const QUESTION_ROOM_PREFIX = 'post:';
 const QUESTIONS_LIST_ROOM = 'posts:list';
 
-@WebSocketGateway({
-  cors: { origin: '*' },
-  path: '/socket.io',
-  namespace: '/',
-})
+@WebSocketGateway(SOCKET_IO_GATEWAY_OPTIONS)
 export class AiForumCommentsGateway {
   @WebSocketServer()
   server!: Server;

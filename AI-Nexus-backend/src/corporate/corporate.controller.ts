@@ -23,6 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { largeUploadDiskStorage } from '../common/multer-disk.util';
 import { Request, Response } from 'express';
 
 import { JwtAuthGuard } from '../jwt/jwt-auth.guard';
@@ -377,7 +378,7 @@ export class CorporateController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 1024 * 1024 * 1024 },
+      limits: { fileSize: 20 * 1024 * 1024 },
       fileFilter: csvOrExcelFileFilter,
     }),
   )
@@ -430,7 +431,7 @@ export class CorporateController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 1024 * 1024 * 1024 },
+      limits: { fileSize: 20 * 1024 * 1024 },
       fileFilter: csvOrExcelFileFilter,
     }),
   )
@@ -567,8 +568,8 @@ export class CorporateController {
   })
   @UseInterceptors(
     FilesInterceptor('files', 10, {
-      storage: memoryStorage(),
-      limits: { fileSize: 500 * 1024 * 1024 },
+      storage: largeUploadDiskStorage('bulk-enrolment-zip'),
+      limits: { fileSize: 100 * 1024 * 1024 },
       fileFilter: zipFileFilter,
     }),
   )
