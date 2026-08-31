@@ -4,6 +4,7 @@ import {
   countriesAssignedToPromo,
   resolveCountryPricing,
   resolveCountryPromoAmount,
+  resolveCountryPromoPriceForCode,
   type CountryPricingMap,
   type PromoAmountsByCountry,
 } from './intl-promo-countries';
@@ -118,7 +119,6 @@ export async function resolveIntlMembershipPricing(
     countryOfResidence,
   );
   const appliedPromo = String(options.promoCode || '').trim().toUpperCase();
-  const rowPromo = String(countryRow?.promoCode || '').trim().toUpperCase();
   const assignedCountries = appliedPromo
     ? countriesAssignedToPromo(options.countryPricing, appliedPromo)
     : [];
@@ -126,9 +126,9 @@ export async function resolveIntlMembershipPricing(
     !appliedPromo
     || assignedCountries.length === 0
     || Boolean(countryCode && assignedCountries.includes(countryCode));
-  const promoMatchesCountry =
-    countryEligibleForPromo
-    && (!appliedPromo || !rowPromo || rowPromo === appliedPromo);
+  const promoPriceForCode = appliedPromo
+    ? resolveCountryPromoPriceForCode(options.countryPricing, countryOfResidence, appliedPromo)
+    : null;
 
   const planBasePrice =
     membershipType === 'student' ? countryRow?.studentBasePrice : countryRow?.basePrice;
@@ -137,11 +137,13 @@ export async function resolveIntlMembershipPricing(
       ? countryRow?.studentBaseAmountCents
       : countryRow?.baseAmountCents;
   const planPromoPrice =
-    membershipType === 'student' ? countryRow?.studentDiscountPrice : countryRow?.discountPrice;
+    membershipType === 'student'
+      ? promoPriceForCode?.studentDiscountPrice
+      : promoPriceForCode?.discountPrice;
   const planPromoCents =
     membershipType === 'student'
-      ? countryRow?.studentDiscountAmountCents
-      : countryRow?.discountAmountCents;
+      ? promoPriceForCode?.studentDiscountAmountCents
+      : promoPriceForCode?.discountAmountCents;
 
   const exactBase =
     planBasePrice != null
@@ -153,14 +155,14 @@ export async function resolveIntlMembershipPricing(
         }
       : null;
   const exactPromo =
-    promoMatchesCountry && planPromoPrice != null
+    countryEligibleForPromo && planPromoPrice != null
       ? {
           amount: planPromoPrice,
           amountCents: planPromoCents || 0,
-          currency: countryRow?.currency || localCurrency,
+          currency: promoPriceForCode?.currency || countryRow?.currency || localCurrency,
           rate: 1,
         }
-      : promoMatchesCountry && membershipType !== 'student' && countryPromo
+      : countryEligibleForPromo && membershipType !== 'student' && countryPromo
         ? {
             amount: countryPromo.amount,
             amountCents: countryPromo.amountCents,

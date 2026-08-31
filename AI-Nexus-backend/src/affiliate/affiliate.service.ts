@@ -16,7 +16,7 @@ import { AffiliateClickEntity } from './affiliate-click.entity';
 import { AffiliateSaleEntity, AffiliateSaleStatus } from './affiliate-sale.entity';
 import { VoucherCodeEntity, VoucherCodeSite, VoucherMembershipType } from './voucher-code.entity';
 import { AffiliateSignupCheckoutDto, ValidateAffiliateCodeDto } from './affiliate.dto';
-import { resolveCountryPricing, resolveCountryPromoAmount } from '../intl-payment/intl-promo-countries';
+import { resolveCountryPricing, resolveCountryPromoAmount, resolveCountryPromoPriceForCode } from '../intl-payment/intl-promo-countries';
 import { convertDefaultSgdToCountryCurrency } from '../intl-payment/intl-pricing';
 import { IntlFxService } from '../intl-payment/intl-fx.service';
 
@@ -443,22 +443,13 @@ export class AffiliateService {
     const countryRow = !isInternational
       ? resolveCountryPricing(settings?.countryPricing, countryKey)
       : null;
-    const countryPromo = !isInternational
-      ? countryRow?.discountPrice != null
-        ? {
-            amount: countryRow.discountPrice,
-            currency: countryRow.currency,
-          }
-        : resolveCountryPromoAmount(settings?.promoAmountsByCountry, countryKey)
-      : null;
     const sgdOriginal = Number(settings?.baseAmount);
     const originalSgd =
       Number.isFinite(sgdOriginal) && sgdOriginal > 0 ? sgdOriginal : originalAmount;
 
     let pricedOriginalAmount =
       countryRow?.basePrice != null ? countryRow.basePrice : originalSgd;
-    let discountedAmount = countryPromo?.amount ?? discountedFallback;
-    let currency = countryPromo?.currency || countryRow?.currency || fallbackCurrency;
+    let currency = countryRow?.currency || fallbackCurrency;
 
     if (!isInternational && countryRow?.basePrice == null) {
       const convertedOriginal = await convertDefaultSgdToCountryCurrency(
@@ -469,15 +460,39 @@ export class AffiliateService {
       pricedOriginalAmount = convertedOriginal.amount;
       currency = convertedOriginal.currency;
     }
-    if (!isInternational && !countryPromo) {
+
+    const resolvePaymentPromoAmount = async (promoCode?: string | null) => {
+      const promoPrice = resolveCountryPromoPriceForCode(
+        settings?.countryPricing,
+        countryKey,
+        promoCode,
+      );
+      if (promoPrice?.discountPrice != null) {
+        return {
+          amount: promoPrice.discountPrice,
+          currency: promoPrice.currency,
+          fixed: true,
+        };
+      }
+      const legacyPromo = resolveCountryPromoAmount(settings?.promoAmountsByCountry, countryKey);
+      if (legacyPromo) {
+        return {
+          amount: legacyPromo.amount,
+          currency: legacyPromo.currency,
+          fixed: true,
+        };
+      }
       const convertedPromo = await convertDefaultSgdToCountryCurrency(
         this.intlFxService,
         discountedFallback,
         countryKey,
       );
-      discountedAmount = convertedPromo.amount;
-      currency = convertedPromo.currency || currency;
-    }
+      return {
+        amount: convertedPromo.amount,
+        currency: convertedPromo.currency || currency,
+        fixed: false,
+      };
+    };
 
     // Single `code` field: try affiliate first (payment only), then voucher for the site.
     const singleCode = this.normalizeCode(dto.code);
@@ -520,6 +535,14 @@ export class AffiliateService {
     if (!appliedCode && discountApplied) {
       appliedCode = affiliate.valid ? affiliate.code : voucher.code;
       codeType = affiliate.valid ? 'affiliate' : 'voucher';
+    }
+
+    let discountedAmount = discountedFallback;
+    if (!isInternational) {
+      const promoCodeForPricing = discountApplied && codeType === 'voucher' ? appliedCode : null;
+      const promoPricing = await resolvePaymentPromoAmount(promoCodeForPricing);
+      discountedAmount = promoPricing.amount;
+      currency = promoPricing.currency || currency;
     }
 
     return {

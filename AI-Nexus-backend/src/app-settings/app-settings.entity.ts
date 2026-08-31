@@ -440,12 +440,18 @@ export type MembershipPaymentSettings = {
   voucherDiscountAmount?: number;
   /** Exact promo payable amount keyed by ISO country code (ASEAN + China). */
   promoAmountsByCountry?: Record<string, number>;
-  /** Manual country pricing: basePrice, discountPrice, active, promoCode. */
+  /** Manual country pricing: basePrice, discountPrice, active, promoCode, promoPricesByCode. */
   countryPricing?: Record<string, {
     basePrice: number | null;
     discountPrice: number | null;
+    studentBasePrice?: number | null;
+    studentDiscountPrice?: number | null;
     active: boolean;
     promoCode: string | null;
+    promoPricesByCode?: Record<string, {
+      discountPrice: number | null;
+      studentDiscountPrice?: number | null;
+    }>;
   }>;
   /** Active admin promo/referral code shown in admin + used in full signup link. */
   referralCode?: string;

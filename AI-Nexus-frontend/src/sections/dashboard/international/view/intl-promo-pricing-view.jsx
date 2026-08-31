@@ -8,7 +8,6 @@ import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Switch from '@mui/material/Switch';
 import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import TableRow from '@mui/material/TableRow';
@@ -21,20 +20,16 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import InputLabel from '@mui/material/InputLabel';
 import FormControl from '@mui/material/FormControl';
-import DialogTitle from '@mui/material/DialogTitle';
 import Autocomplete from '@mui/material/Autocomplete';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
 import InputAdornment from '@mui/material/InputAdornment';
 import TableContainer from '@mui/material/TableContainer';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import Tab from '@mui/material/Tab';
 import Tooltip from '@mui/material/Tooltip';
 import LoadingButton from '@mui/lab/LoadingButton';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { alpha, useTheme } from '@mui/material/styles';
+import { alpha } from '@mui/material/styles';
 import dayjs from 'dayjs';
 
 import { toast } from 'src/components/snackbar';
@@ -62,6 +57,7 @@ import {
 
 import { intlPaymentAdminService } from 'src/services/intl-payment-admin.service';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { PromoPriceSidebarDrawer } from './promo-price-sidebar-drawer';
 
 const INTL_REFERRAL_PATH = '/auth/sign-up?ref=';
 const AINEXUS_REFERRAL_PATH = '/auth/sign-up?membershipOutcome=paid-signup&ref=';
@@ -71,7 +67,7 @@ const COUNTRY_CATALOG = COUNTRY_PRICING_CATALOG;
 const PROMO_TABLE_HEAD = [
   { id: 'code', label: 'Code', width: 160 },
   { id: 'country', label: 'Countries' },
-  { id: 'discountPrice', label: 'Special Price', width: 160 },
+  { id: 'discountPrice', label: 'Special Price', width: 180 },
   { id: 'maxRedemptions', label: 'User limit', width: 120 },
   { id: 'expiresAt', label: 'Valid Till', width: 140 },
   { id: 'status', label: 'Status', width: 110 },
@@ -83,7 +79,7 @@ const INTL_PROMO_TABLE_HEAD = [
   { id: 'code', label: 'Code', width: 140 },
   { id: 'membershipType', label: 'Plan', width: 120 },
   { id: 'country', label: 'Countries' },
-  { id: 'discountPrice', label: 'Special Price', width: 150 },
+  { id: 'discountPrice', label: 'Special Price', width: 200 },
   { id: 'maxRedemptions', label: 'User limit', width: 110 },
   { id: 'expiresAt', label: 'Valid Till', width: 130 },
   { id: 'status', label: 'Status', width: 100 },
@@ -137,21 +133,116 @@ function formatMoneyWithCurrency(value, currency) {
   return code ? `${amount} ${code}` : amount;
 }
 
-function formatPromoPriceLabel(row, plan, isIntl) {
-  if (!row) return '—';
-  if (!isIntl) {
-    return row.discountPrice ? formatMoney(row.discountPrice) : '—';
+function PromoSpecialPriceCell({ countryList, plan, isIntl, defaultPromoAmount, onClick }) {
+  const boxSx = {
+    cursor: 'pointer',
+    py: 0.5,
+    px: 0.75,
+    mx: -0.75,
+    borderRadius: 1,
+    display: 'inline-block',
+    '&:hover': { bgcolor: 'action.hover' },
+  };
+
+  if (!countryList?.length) {
+    if (!isIntl && defaultPromoAmount) {
+      return (
+        <Box onClick={onClick} sx={boxSx}>
+          <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+            SGD {formatMoney(defaultPromoAmount)}
+          </Typography>
+        </Box>
+      );
+    }
+    return (
+      <Typography variant="body2" color="text.secondary" onClick={onClick} sx={boxSx}>
+        —
+      </Typography>
+    );
   }
+
+  if (countryList.length > 1) {
+    return (
+      <Chip
+        size="small"
+        label={`${countryList.length} prices`}
+        onClick={onClick}
+        sx={{ height: 24, fontWeight: 700, cursor: 'pointer' }}
+      />
+    );
+  }
+
+  const row = countryList[0];
+  const currency = row.currency;
+
+  if (!isIntl) {
+    const amount = formatMoney(row.discountPrice);
+    const label = [String(currency || '').trim(), amount].filter((part) => part && part !== '—').join(' ');
+    return (
+      <Box onClick={onClick} sx={boxSx}>
+        <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+          {label || '—'}
+        </Typography>
+      </Box>
+    );
+  }
+
   const full = toAmount(row.discountPrice);
   const student = toAmount(row.studentDiscountPrice);
-  if (plan === 'student') return student != null ? formatMoneyWithCurrency(student, row.currency) : '—';
-  if (plan === 'full') return full != null ? formatMoneyWithCurrency(full, row.currency) : '—';
-  if (full != null && student != null) {
-    return `F ${formatMoneyWithCurrency(full, row.currency)} · S ${formatMoneyWithCurrency(student, row.currency)}`;
+  const normalizedPlan = String(plan || '').toLowerCase();
+
+  const lines = [];
+  if (normalizedPlan === 'student') {
+    if (student != null) lines.push({ label: null, amount: student });
+  } else if (normalizedPlan === 'full') {
+    if (full != null) lines.push({ label: null, amount: full });
+  } else if (full != null && student != null) {
+    lines.push({ label: 'Full', amount: full }, { label: 'Student', amount: student });
+  } else if (student != null) {
+    lines.push({ label: 'Student', amount: student });
+  } else if (full != null) {
+    lines.push({ label: 'Full', amount: full });
   }
-  if (student != null) return `S ${formatMoneyWithCurrency(student, row.currency)}`;
-  if (full != null) return `F ${formatMoneyWithCurrency(full, row.currency)}`;
-  return '—';
+
+  if (!lines.length) {
+    return (
+      <Typography variant="body2" color="text.secondary" onClick={onClick} sx={boxSx}>
+        —
+      </Typography>
+    );
+  }
+
+  return (
+    <Box onClick={onClick} sx={boxSx}>
+      <Stack spacing={0.25}>
+        {lines.map((line, index) => (
+          <Stack
+            key={line.label || `price-${index}`}
+            direction="row"
+            spacing={1}
+            alignItems="baseline"
+            sx={{ minWidth: 0 }}
+          >
+            {line.label ? (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ minWidth: 48, flexShrink: 0, lineHeight: 1.45 }}
+              >
+                {line.label}
+              </Typography>
+            ) : null}
+            <Typography
+              variant="body2"
+              sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', lineHeight: 1.45 }}
+            >
+              {formatMoneyWithCurrency(line.amount, currency)}
+            </Typography>
+          </Stack>
+        ))}
+      </Stack>
+    </Box>
+  );
 }
 
 function toAmount(value) {
@@ -184,9 +275,54 @@ function convertSgdAmount(amountSgd, currency, rates) {
 function countriesForPromo(voucher, rows) {
   const code = String(voucher?.code || '').trim().toUpperCase();
   if (!code) return [];
-  return (rows || []).filter(
-    (row) => String(row.promoCode || '').toUpperCase() === code,
-  );
+  return (rows || [])
+    .map((row) => {
+      const entry = getPromoPricesByCode(row)[code];
+      if (!entry) return null;
+      if (entry.discountPrice == null && entry.studentDiscountPrice == null) return null;
+      return {
+        ...row,
+        discountPrice: entry.discountPrice ?? null,
+        studentDiscountPrice: entry.studentDiscountPrice ?? null,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getPromoPricesByCode(row) {
+  const out = {};
+  const raw = row?.promoPricesByCode;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    Object.entries(raw).forEach(([promoCode, entry]) => {
+      const key = String(promoCode || '').trim().toUpperCase();
+      if (!key || !entry || typeof entry !== 'object') return;
+      out[key] = {
+        discountPrice: toAmount(entry.discountPrice),
+        studentDiscountPrice: toAmount(entry.studentDiscountPrice),
+      };
+    });
+  }
+  const legacyCode = row?.promoCode ? String(row.promoCode).trim().toUpperCase() : '';
+  if (legacyCode && !out[legacyCode]) {
+    const discountPrice = toAmount(row.discountPrice);
+    const studentDiscountPrice = toAmount(row.studentDiscountPrice);
+    if (discountPrice != null || studentDiscountPrice != null) {
+      out[legacyCode] = { discountPrice, studentDiscountPrice };
+    }
+  }
+  return out;
+}
+
+function syncLegacyPromoFields(row, byCode) {
+  const codes = Object.keys(byCode || {});
+  const primaryCode = codes[0] || null;
+  const primaryEntry = primaryCode ? byCode[primaryCode] : null;
+  return {
+    promoPricesByCode: codes.length ? byCode : undefined,
+    promoCode: primaryCode,
+    discountPrice: primaryEntry?.discountPrice ?? null,
+    studentDiscountPrice: primaryEntry?.studentDiscountPrice ?? null,
+  };
 }
 
 function catalogByCode(code) {
@@ -238,6 +374,7 @@ function normalizeCountryList(cfg) {
       studentDiscountPrice: toAmount(saved.studentDiscountPrice),
       active: saved.active !== false,
       promoCode: saved.promoCode ? String(saved.promoCode).toUpperCase() : null,
+      promoPricesByCode: getPromoPricesByCode(saved),
     };
   });
 }
@@ -245,13 +382,13 @@ function normalizeCountryList(cfg) {
 function rowsToPricingMap(rows) {
   const map = {};
   rows.forEach((row) => {
+    const byCode = getPromoPricesByCode(row);
+    const legacy = syncLegacyPromoFields(row, byCode);
     map[row.code] = {
       basePrice: toAmount(row.basePrice),
       studentBasePrice: toAmount(row.studentBasePrice),
-      discountPrice: toAmount(row.discountPrice),
-      studentDiscountPrice: toAmount(row.studentDiscountPrice),
       active: row.active !== false,
-      promoCode: row.promoCode || null,
+      ...legacy,
     };
   });
   return map;
@@ -320,8 +457,8 @@ export function CountryPricingManagementPanel({
   const [editingPromoId, setEditingPromoId] = useState(null);
   const [showCountryPanel, setShowCountryPanel] = useState(false);
   const [showPromoPanel, setShowPromoPanel] = useState(false);
-  const [promoPriceDialogOpen, setPromoPriceDialogOpen] = useState(false);
-  const [promoDialogSearch, setPromoDialogSearch] = useState('');
+  const [showPromoPricePanel, setShowPromoPricePanel] = useState(false);
+  const [promoPriceSearch, setPromoPriceSearch] = useState('');
   const [fxRates, setFxRates] = useState({ SGD: 1 });
   const [loadingFx, setLoadingFx] = useState(false);
   const [savingDefaults, setSavingDefaults] = useState(false);
@@ -333,8 +470,6 @@ export function CountryPricingManagementPanel({
   });
   const countryFormRef = useRef(null);
   const promoFormRef = useRef(null);
-  const theme = useTheme();
-  const isMobilePromoDialog = useMediaQuery(theme.breakpoints.down('sm'));
   const table = useTable({ defaultRowsPerPage: 10, defaultCurrentPage: 0 });
   const promoTable = useTable({ defaultRowsPerPage: 5, defaultCurrentPage: 0, defaultOrderBy: 'code' });
   const tabs = useTabs('countries');
@@ -384,13 +519,13 @@ export function CountryPricingManagementPanel({
     if (tabs.value !== 'countries') setShowCountryPanel(false);
     if (tabs.value !== 'promo') {
       setShowPromoPanel(false);
-      setPromoPriceDialogOpen(false);
+      setShowPromoPricePanel(false);
     }
   }, [tabs.value]);
 
   useEffect(() => {
-    if (!promoPriceDialogOpen) return undefined;
-    setPromoDialogSearch('');
+    if (!showPromoPricePanel) return undefined;
+    setPromoPriceSearch('');
     let cancelled = false;
     setLoadingFx(true);
     intlPaymentAdminService
@@ -409,7 +544,7 @@ export function CountryPricingManagementPanel({
     return () => {
       cancelled = true;
     };
-  }, [promoPriceDialogOpen]);
+  }, [showPromoPricePanel]);
 
   const persistRows = async (nextRows) => {
     setRows(nextRows);
@@ -464,8 +599,8 @@ export function CountryPricingManagementPanel({
     () => COUNTRY_CATALOG.filter((row) => (promoForm.countryCodes || []).includes(row.code)),
     [promoForm.countryCodes],
   );
-  const filteredPromoDialogCountries = useMemo(() => {
-    const q = promoDialogSearch.trim().toLowerCase();
+  const filteredPromoPriceCountries = useMemo(() => {
+    const q = promoPriceSearch.trim().toLowerCase();
     if (!q) return selectedPromoCountries;
     return selectedPromoCountries.filter(
       (row) =>
@@ -473,7 +608,7 @@ export function CountryPricingManagementPanel({
         || row.code.toLowerCase().includes(q)
         || String(row.currency || '').toLowerCase().includes(q),
     );
-  }, [selectedPromoCountries, promoDialogSearch]);
+  }, [selectedPromoCountries, promoPriceSearch]);
   const unselectedPromoCountries = useMemo(
     () => COUNTRY_CATALOG.filter((row) => !(promoForm.countryCodes || []).includes(row.code)),
     [promoForm.countryCodes],
@@ -539,7 +674,7 @@ export function CountryPricingManagementPanel({
       isActive: voucher ? voucher.isActive !== false : true,
     });
     scrollTo(promoFormRef);
-    setPromoPriceDialogOpen(false);
+    setShowPromoPricePanel(false);
   };
 
   const resetPromoForm = () => {
@@ -547,14 +682,14 @@ export function CountryPricingManagementPanel({
     setEditingPromoId(null);
     setPromoForm(EMPTY_PROMO_FORM);
     setShowPromoPanel(true);
-    setPromoPriceDialogOpen(false);
+    setShowPromoPricePanel(false);
   };
 
   const closePromoPanel = () => {
     setEditingPromoId(null);
     setPromoForm(EMPTY_PROMO_FORM);
     setShowPromoPanel(false);
-    setPromoPriceDialogOpen(false);
+    setShowPromoPricePanel(false);
   };
 
   const handlePromoCountriesChange = (nextCodes) => {
@@ -564,17 +699,15 @@ export function CountryPricingManagementPanel({
       const studentPromoPrices = { ...prev.studentPromoPrices };
       codes.forEach((code) => {
         const row = rows.find((item) => item.code === code);
-        const samePromo =
-          row && String(row.promoCode || '').toUpperCase() === String(prev.code || '').toUpperCase();
-        if ((promoPrices[code] == null || promoPrices[code] === '') && samePromo && row.discountPrice != null) {
-          promoPrices[code] = row.discountPrice;
+        const entry = row ? getPromoPricesByCode(row)[String(prev.code || '').toUpperCase()] : null;
+        if ((promoPrices[code] == null || promoPrices[code] === '') && entry?.discountPrice != null) {
+          promoPrices[code] = entry.discountPrice;
         }
         if (
           (studentPromoPrices[code] == null || studentPromoPrices[code] === '')
-          && samePromo
-          && row.studentDiscountPrice != null
+          && entry?.studentDiscountPrice != null
         ) {
-          studentPromoPrices[code] = row.studentDiscountPrice;
+          studentPromoPrices[code] = entry.studentDiscountPrice;
         }
       });
       Object.keys(promoPrices).forEach((code) => {
@@ -598,8 +731,12 @@ export function CountryPricingManagementPanel({
     handlePromoCountriesChange(checked ? COUNTRY_CATALOG.map((row) => row.code) : []);
   };
 
-  const openPromoPriceDialog = () => {
-    setPromoPriceDialogOpen(true);
+  const openPromoPricePanel = () => {
+    setShowPromoPricePanel(true);
+  };
+
+  const closePromoPricePanel = () => {
+    setShowPromoPricePanel(false);
   };
 
   const handleSaveCountry = async () => {
@@ -657,7 +794,16 @@ export function CountryPricingManagementPanel({
     try {
       const nextRows = rows.map((item) =>
         item.code === row.code
-          ? { ...item, basePrice: null, studentBasePrice: null, discountPrice: null, studentDiscountPrice: null, promoCode: null, active: true }
+          ? {
+              ...item,
+              basePrice: null,
+              studentBasePrice: null,
+              discountPrice: null,
+              studentDiscountPrice: null,
+              promoCode: null,
+              promoPricesByCode: undefined,
+              active: true,
+            }
           : item,
       );
       await persistRows(nextRows);
@@ -755,32 +901,34 @@ export function CountryPricingManagementPanel({
 
       const priced = new Set(pricedCountryCodes);
       const nextRows = rows.map((row) => {
+        const byCode = { ...getPromoPricesByCode(row) };
+
         if (priced.has(row.code)) {
           const fullPrice = toAmount(promoForm.promoPrices?.[row.code]);
           const studentPrice = toAmount(promoForm.studentPromoPrices?.[row.code]);
-          return {
-            ...row,
+          const existing = byCode[code] || {};
+          byCode[code] = {
             discountPrice:
               voucherSite !== 'international' || membershipType === 'full' || membershipType === 'both'
                 ? fullPrice
-                : row.discountPrice,
+                : existing.discountPrice ?? null,
             studentDiscountPrice:
               voucherSite === 'international' && (membershipType === 'student' || membershipType === 'both')
                 ? studentPrice
-                : row.studentDiscountPrice,
-            promoCode: code,
-            active: true,
+                : existing.studentDiscountPrice ?? null,
           };
+          if (byCode[code].discountPrice == null && byCode[code].studentDiscountPrice == null) {
+            delete byCode[code];
+          }
+        } else if (byCode[code]) {
+          delete byCode[code];
         }
-        if (String(row.promoCode || '').toUpperCase() === code) {
-          return {
-            ...row,
-            promoCode: null,
-            discountPrice: null,
-            studentDiscountPrice: null,
-          };
-        }
-        return row;
+
+        return {
+          ...row,
+          ...syncLegacyPromoFields(row, byCode),
+          active: true,
+        };
       });
       await persistRows(nextRows);
       await loadPromos();
@@ -802,11 +950,16 @@ export function CountryPricingManagementPanel({
     if (!voucher?.id) return;
     try {
       await deleteVoucherCode(voucher.id);
-      const nextRows = rows.map((row) =>
-        String(row.promoCode || '').toUpperCase() === String(voucher.code || '').toUpperCase()
-          ? { ...row, promoCode: null, discountPrice: null, studentDiscountPrice: null }
-          : row,
-      );
+      const promoCode = String(voucher.code || '').trim().toUpperCase();
+      const nextRows = rows.map((row) => {
+        const byCode = { ...getPromoPricesByCode(row) };
+        if (!byCode[promoCode]) return row;
+        delete byCode[promoCode];
+        return {
+          ...row,
+          ...syncLegacyPromoFields(row, byCode),
+        };
+      });
       await persistRows(nextRows);
       if (editingPromoId === voucher.id) closePromoPanel();
       await loadPromos();
@@ -1166,15 +1319,6 @@ export function CountryPricingManagementPanel({
                             referralLinkPath,
                           );
                           const plan = String(voucher.membershipType || '').toLowerCase();
-                          const priceLabel = !countryList?.length
-                            ? (!isIntlSite && defaultPromoAmount
-                                ? `SGD ${formatMoney(defaultPromoAmount)}`
-                                : '—')
-                            : countryList.length === 1
-                              ? (isIntlSite
-                                  ? formatPromoPriceLabel(countryList[0], plan, true)
-                                  : `${countryList[0].currency || ''} ${formatPromoPriceLabel(countryList[0], plan, false)}`.trim())
-                              : `${countryList.length} prices`;
                           return (
                             <TableRow
                               key={voucher.id || voucher.code}
@@ -1236,15 +1380,14 @@ export function CountryPricingManagementPanel({
                                   </Tooltip>
                                 )}
                               </TableCell>
-                              <TableCell sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                                <Button
-                                  size="small"
-                                  color="inherit"
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                <PromoSpecialPriceCell
+                                  countryList={countryList}
+                                  plan={plan}
+                                  isIntl={isIntlSite}
+                                  defaultPromoAmount={defaultPromoAmount}
                                   onClick={() => fillPromoForm(voucher)}
-                                  sx={{ px: 1 }}
-                                >
-                                  {priceLabel}
-                                </Button>
+                                />
                               </TableCell>
                               <TableCell>
                                 {voucher.maxRedemptions != null
@@ -1328,7 +1471,7 @@ export function CountryPricingManagementPanel({
                         ? `Updating ${promoForm.code || 'promo code'}.`
                         : isIntlSite
                           ? 'Create a promo code, choose Student, Full / Role, or Both, then set country prices.'
-                          : 'Create a promo code, then set country prices in the popup.'}
+                          : 'Create a promo code, then set country prices in the sidebar.'}
                     </Typography>
                     <Stack spacing={1.75}>
                       <TextField
@@ -1377,7 +1520,7 @@ export function CountryPricingManagementPanel({
                         variant="outlined"
                         color="inherit"
                         startIcon={<Iconify icon="solar:tag-price-bold" width={18} />}
-                        onClick={openPromoPriceDialog}
+                        onClick={openPromoPricePanel}
                       >
                         Set promo prices
                         {selectedPromoCountries.length ? ` (${selectedPromoCountries.length})` : ''}
@@ -1512,9 +1655,11 @@ export function CountryPricingManagementPanel({
                     </TableHead>
                     <TableBody>
                       {paginatedRows.map((row, index) => {
-                        const signupLink = !isIntlSite && row.promoCode
-                          ? buildFullReferralLink(websiteBaseUrl, row.promoCode, referralLinkPath)
-                          : '';
+                        const promoEntries = Object.entries(getPromoPricesByCode(row));
+                        const signupLinkForCode = (promoCode) =>
+                          !isIntlSite && promoCode
+                            ? buildFullReferralLink(websiteBaseUrl, promoCode, referralLinkPath)
+                            : '';
                         return (
                         <TableRow
                           key={row.code}
@@ -1544,38 +1689,36 @@ export function CountryPricingManagementPanel({
                           ) : null}
                           {!isIntlSite ? (
                           <TableCell>
-                            {row.discountPrice || row.studentDiscountPrice ? (
-                              <Stack spacing={0.25}>
-                                <Stack direction="row" spacing={0.75} alignItems="center">
-                                  <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                                    {formatMoneyWithCurrency(row.discountPrice, row.currency)}
-                                  </Typography>
-                                {row.promoCode ? (
-                                    <>
-                                      <Chip
+                            {promoEntries.length ? (
+                              <Stack spacing={0.5}>
+                                {promoEntries.map(([promoCode, entry]) => (
+                                  <Stack key={promoCode} direction="row" spacing={0.75} alignItems="center">
+                                    <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                                      {formatMoneyWithCurrency(entry.discountPrice, row.currency)}
+                                    </Typography>
+                                    <Chip
+                                      size="small"
+                                      color="success"
+                                      label={promoCode}
+                                      onClick={() => {
+                                        const voucher = promoRows.find(
+                                          (item) =>
+                                            String(item.code || '').toUpperCase() === String(promoCode).toUpperCase(),
+                                        );
+                                        fillPromoForm(voucher || { code: promoCode, isActive: true });
+                                      }}
+                                      sx={{ height: 22, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+                                    />
+                                    <Tooltip title={signupLinkForCode(promoCode) || 'Copy signup link'}>
+                                      <IconButton
                                         size="small"
-                                        color="success"
-                                        label={row.promoCode}
-                                        onClick={() => {
-                                          const voucher = promoRows.find(
-                                            (item) =>
-                                              String(item.code || '').toUpperCase() === String(row.promoCode).toUpperCase(),
-                                          );
-                                          fillPromoForm(voucher || { code: row.promoCode, isActive: true });
-                                        }}
-                                        sx={{ height: 22, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
-                                      />
-                                      <Tooltip title={signupLink || 'Copy signup link'}>
-                                        <IconButton
-                                          size="small"
-                                          onClick={() => handleCopySignupLink(row.promoCode)}
-                                        >
-                                          <Iconify icon="solar:copy-bold" width={16} />
-                                        </IconButton>
-                                      </Tooltip>
-                                    </>
-                                  ) : null}
-                                </Stack>
+                                        onClick={() => handleCopySignupLink(promoCode)}
+                                      >
+                                        <Iconify icon="solar:copy-bold" width={16} />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </Stack>
+                                ))}
                               </Stack>
                             ) : (
                               '—'
@@ -1734,327 +1877,36 @@ export function CountryPricingManagementPanel({
         </Stack>
       )}
 
-      <Dialog
-        fullWidth
-        fullScreen={isMobilePromoDialog}
-        maxWidth="lg"
-        open={promoPriceDialogOpen}
-        onClose={() => setPromoPriceDialogOpen(false)}
-        PaperProps={{
-          sx: {
-            m: { xs: 0, sm: 2 },
-            maxHeight: { sm: '90vh' },
-            display: 'flex',
-            flexDirection: 'column',
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            px: { xs: 2, sm: 3 },
-            py: 2,
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 1,
-          }}
-        >
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6">Promo prices by country</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Default SGD price: <strong>{formatMoney(defaultSgdAmount)}</strong>
-              {promoForm.code ? ` · ${promoForm.code}` : ''}
-            </Typography>
-          </Box>
-          <IconButton
-            aria-label="Close"
-            onClick={() => setPromoPriceDialogOpen(false)}
-            sx={{ mt: -0.5, mr: -1 }}
-          >
-            <Iconify icon="mingcute:close-line" />
-          </IconButton>
-        </DialogTitle>
-        <Box
-          sx={{
-            px: { xs: 2, sm: 3 },
-            pt: 0.5,
-            pb: 2,
-            flexShrink: 0,
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
-          }}
-        >
-          <Stack spacing={1.25}>
-            <TextField
-              size="small"
-              fullWidth
-              label="Search"
-              value={promoDialogSearch}
-              onChange={(event) => setPromoDialogSearch(event.target.value)}
-              placeholder="Country, code or currency"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Iconify icon="eva:search-fill" width={18} />
-                  </InputAdornment>
-                ),
-                endAdornment: promoDialogSearch ? (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      edge="end"
-                      aria-label="Clear search"
-                      onClick={() => setPromoDialogSearch('')}
-                    >
-                      <Iconify icon="mingcute:close-line" width={16} />
-                    </IconButton>
-                  </InputAdornment>
-                ) : null,
-              }}
-              inputProps={{
-                style: {
-                  color: 'inherit',
-                  WebkitTextFillColor: 'inherit',
-                  opacity: 1,
-                },
-              }}
-            />
-            <Autocomplete
-              multiple
-              fullWidth
-              autoHighlight
-              disableCloseOnSelect
-              options={unselectedPromoCountries}
-              value={[]}
-              getOptionLabel={(option) => (option?.name ? `${option.name} (${option.currency})` : '')}
-              isOptionEqualToValue={(option, value) => option.code === value.code}
-              noOptionsText="All countries are already selected"
-              onChange={(_, selected) => {
-                const codes = (selected || []).map((row) => row.code).filter(Boolean);
-                if (!codes.length) return;
-                handlePromoCountriesChange([...(promoForm.countryCodes || []), ...codes]);
-              }}
-              renderTags={() => null}
-              renderOption={(props, option, { selected }) => {
-                const { key, ...optionProps } = props;
-                return (
-                  <li key={key || option.code} {...optionProps}>
-                    <Checkbox size="small" checked={selected} sx={{ mr: 1, p: 0.5 }} />
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <CountryFlag code={option.code} />
-                      <span>{option.name} ({option.currency})</span>
-                    </Stack>
-                  </li>
-                );
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  size="small"
-                  label="Add country"
-                  placeholder="Select a country that is not added yet"
-                />
-              )}
-            />
-            <FormControlLabel
-              sx={{ ml: 0, mr: 0 }}
-              control={
-                <Checkbox
-                  size="small"
-                  checked={allPromoCountriesSelected}
-                  indeterminate={
-                    selectedPromoCountries.length > 0 && !allPromoCountriesSelected
-                  }
-                  onChange={(event) => toggleAllPromoDialogCountries(event.target.checked)}
-                />
-              }
-              label={
-                <Typography variant="body2">
-                  Select all
-                  <Typography component="span" variant="body2" color="text.secondary">
-                    {` · ${filteredPromoDialogCountries.length} of ${selectedPromoCountries.length} countries`}
-                  </Typography>
-                </Typography>
-              }
-            />
-          </Stack>
-        </Box>
-        <DialogContent
-          sx={{
-            px: { xs: 2, sm: 3 },
-            py: 2,
-            flex: 1,
-            overflow: 'auto',
-          }}
-        >
-          {!filteredPromoDialogCountries.length ? (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-              {promoDialogSearch.trim()
-                ? 'No countries match your search'
-                : 'Select all or add a country to set promo prices'}
-            </Typography>
-          ) : (
-            <Grid container spacing={1.5}>
-            {filteredPromoDialogCountries.map((country) => {
-              const row = rows.find((item) => item.code === country.code) || country;
-              const plan = String(promoForm.membershipType || '').toLowerCase();
-              const showFullPrice = !isIntlSite || plan !== 'student';
-              const showStudentPrice = isIntlSite && plan !== 'full';
-              const hasFullCountryPrice = toAmount(row.basePrice) != null;
-              const hasStudentCountryPrice = toAmount(row.studentBasePrice) != null;
-              const convertedFull = convertSgdAmount(defaultSgdAmount, country.currency, fxRates);
-              const convertedStudent = convertSgdAmount(defaultStudentSgdAmount, country.currency, fxRates);
-              const displayFull = hasFullCountryPrice ? toAmount(row.basePrice) : convertedFull;
-              const displayStudent = hasStudentCountryPrice ? toAmount(row.studentBasePrice) : convertedStudent;
-              const displayAmount = showStudentPrice && !showFullPrice ? displayStudent : displayFull;
-              const hasCountryPrice = showStudentPrice && !showFullPrice ? hasStudentCountryPrice : hasFullCountryPrice;
-              const converted = showStudentPrice && !showFullPrice ? convertedStudent : convertedFull;
-              const displaySource = hasCountryPrice ? 'Set' : converted != null ? 'Converted' : '—';
-              const countryPriceLabel = displayAmount != null
-                ? formatMoneyWithCurrency(displayAmount, country.currency)
-                : loadingFx
-                  ? 'Loading…'
-                  : '—';
-              const defaultSgdLabel = showStudentPrice && !showFullPrice
-                ? defaultStudentSgdAmount
-                : defaultSgdAmount;
-              return (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={country.code}>
-                <Card
-                  variant="outlined"
-                  sx={{ p: { xs: 1.75, sm: 2 }, borderRadius: 1.5, height: 1 }}
-                >
-                  <Stack spacing={1.5}>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ minHeight: 32 }}>
-                      <Checkbox
-                        size="small"
-                        checked
-                        onChange={(event) => togglePromoDialogCountry(country.code, event.target.checked)}
-                        sx={{ p: 0.5, flexShrink: 0 }}
-                      />
-                      <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-                        <CountryFlag code={country.code} />
-                      </Box>
-                      <Typography variant="subtitle2" noWrap sx={{ flex: 1, minWidth: 0 }}>
-                        {country.name} ({country.currency})
-                      </Typography>
-                      {displayAmount != null ? (
-                        <Chip
-                          size="small"
-                          color={hasCountryPrice ? 'success' : 'default'}
-                          label={displaySource}
-                          sx={{ height: 22, fontSize: 11, flexShrink: 0 }}
-                        />
-                      ) : null}
-                    </Stack>
+      <PromoPriceSidebarDrawer
+        open={showPromoPricePanel}
+        onClose={closePromoPricePanel}
+        onSave={handleSavePromo}
+        saving={savingPromo}
+        promoForm={promoForm}
+        setPromoForm={setPromoForm}
+        promoPriceSearch={promoPriceSearch}
+        onPromoPriceSearchChange={setPromoPriceSearch}
+        onClearPromoPriceSearch={() => setPromoPriceSearch('')}
+        defaultSgdAmount={defaultSgdAmount}
+        defaultStudentSgdAmount={defaultStudentSgdAmount}
+        formatMoney={formatMoney}
+        formatMoneyWithCurrency={formatMoneyWithCurrency}
+        convertSgdAmount={convertSgdAmount}
+        toAmount={toAmount}
+        rows={rows}
+        fxRates={fxRates}
+        loadingFx={loadingFx}
+        isIntlSite={isIntlSite}
+        unselectedPromoCountries={unselectedPromoCountries}
+        selectedPromoCountries={selectedPromoCountries}
+        filteredPromoPriceCountries={filteredPromoPriceCountries}
+        allPromoCountriesSelected={allPromoCountriesSelected}
+        onPromoCountriesChange={handlePromoCountriesChange}
+        onToggleAllCountries={toggleAllPromoDialogCountries}
+        onToggleCountry={togglePromoDialogCountry}
+        CountryFlag={CountryFlag}
+      />
 
-                    <Grid container spacing={1.25}>
-                      <Grid item xs={6} sm={4}>
-                        <Typography variant="caption" color="text.secondary">
-                          Default (SGD)
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                          {formatMoneyWithCurrency(defaultSgdLabel, 'SGD')}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={6} sm={8}>
-                        <Typography variant="caption" color="text.secondary">
-                          Country / Converted
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                          {countryPriceLabel}
-                        </Typography>
-                      </Grid>
-                      {showFullPrice ? (
-                        <Grid item xs={12} sm={showStudentPrice ? 6 : 12}>
-                          <TextField
-                            size="small"
-                            fullWidth
-                            type="number"
-                            label={isIntlSite ? 'Full / Role promo price' : 'Promo price'}
-                            value={promoForm.promoPrices?.[country.code] ?? ''}
-                            onChange={(event) =>
-                              setPromoForm((prev) => ({
-                                ...prev,
-                                promoPrices: {
-                                  ...prev.promoPrices,
-                                  [country.code]: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder="Enter promo price"
-                            InputProps={{
-                              startAdornment: (
-                                <InputAdornment position="start">{country.currency}</InputAdornment>
-                              ),
-                            }}
-                            inputProps={{ min: 0, step: '1' }}
-                          />
-                        </Grid>
-                      ) : null}
-                      {showStudentPrice ? (
-                        <Grid item xs={12} sm={showFullPrice ? 6 : 12}>
-                          <TextField
-                            size="small"
-                            fullWidth
-                            type="number"
-                            label="Student promo price"
-                            value={promoForm.studentPromoPrices?.[country.code] ?? ''}
-                            onChange={(event) =>
-                              setPromoForm((prev) => ({
-                                ...prev,
-                                studentPromoPrices: {
-                                  ...prev.studentPromoPrices,
-                                  [country.code]: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder="Enter student promo price"
-                            InputProps={{
-                              startAdornment: (
-                                <InputAdornment position="start">{country.currency}</InputAdornment>
-                              ),
-                            }}
-                            inputProps={{ min: 0, step: '1' }}
-                          />
-                        </Grid>
-                      ) : null}
-                    </Grid>
-                  </Stack>
-                </Card>
-                </Grid>
-              );
-            })}
-            </Grid>
-          )}
-        </DialogContent>
-        <DialogActions
-          sx={{
-            px: { xs: 2, sm: 3 },
-            py: 2,
-            gap: 1,
-            flexDirection: { xs: 'column-reverse', sm: 'row' },
-            '& > :not(:first-of-type)': { ml: { xs: 0, sm: 1 } },
-          }}
-        >
-          <Button
-            fullWidth={isMobilePromoDialog}
-            color="inherit"
-            onClick={() => setPromoPriceDialogOpen(false)}
-          >
-            Close
-          </Button>
-          <LoadingButton
-            fullWidth={isMobilePromoDialog}
-            variant="contained"
-            loading={savingPromo}
-            onClick={handleSavePromo}
-          >
-            Save promo prices
-          </LoadingButton>
-        </DialogActions>
-      </Dialog>
     </>
   );
 }

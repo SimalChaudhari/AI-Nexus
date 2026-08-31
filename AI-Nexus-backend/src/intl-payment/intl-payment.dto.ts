@@ -42,6 +42,10 @@ export class UpdateIntlMembershipSettingsDto {
     studentDiscountPrice?: number | null;
     active?: boolean;
     promoCode?: string | null;
+    promoPricesByCode?: Record<string, {
+      discountPrice?: number | null;
+      studentDiscountPrice?: number | null;
+    }>;
   }>;
 
   @IsOptional()

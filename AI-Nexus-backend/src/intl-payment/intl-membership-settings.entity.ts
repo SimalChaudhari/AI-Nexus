@@ -31,13 +31,19 @@ export class IntlMembershipSettingsEntity {
   @Column({ type: 'jsonb', nullable: true })
   promoAmountsByCountry!: Record<string, number> | null;
 
-  /** Manual country pricing: basePrice, discountPrice, active, promoCode. */
+  /** Manual country pricing: basePrice, discountPrice, active, promoCode, promoPricesByCode. */
   @Column({ type: 'jsonb', nullable: true })
   countryPricing!: Record<string, {
     basePrice: number | null;
     discountPrice: number | null;
+    studentBasePrice?: number | null;
+    studentDiscountPrice?: number | null;
     active: boolean;
     promoCode: string | null;
+    promoPricesByCode?: Record<string, {
+      discountPrice: number | null;
+      studentDiscountPrice?: number | null;
+    }>;
   }> | null;
 
   @Column({ type: 'varchar', length: 64, nullable: true })

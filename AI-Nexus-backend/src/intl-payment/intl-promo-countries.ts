@@ -79,13 +79,21 @@ export type PromoPricingCountryCode = (typeof PROMO_PRICING_COUNTRIES)[number]['
 
 export type PromoAmountsByCountry = Record<string, number>;
 
+export type CountryPromoPriceEntry = {
+  discountPrice: number | null;
+  studentDiscountPrice?: number | null;
+};
+
 export type CountryPricingEntry = {
   basePrice: number | null;
+  /** Legacy single-promo fields; kept for backward compatibility. */
   discountPrice: number | null;
   studentBasePrice?: number | null;
   studentDiscountPrice?: number | null;
   active: boolean;
   promoCode: string | null;
+  /** Per-promo-code prices — a country may have multiple promo codes. */
+  promoPricesByCode?: Record<string, CountryPromoPriceEntry>;
 };
 
 export type CountryPricingMap = Record<string, CountryPricingEntry>;
@@ -101,6 +109,46 @@ function toExactAmount(value: unknown): number | null {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) return null;
   return Number.isInteger(amount) ? amount : Number(amount.toFixed(2));
+}
+
+function normalizePromoCodeKey(value: unknown): string | null {
+  const promoCode = String(value || '').trim().toUpperCase();
+  return /^[A-Z0-9_-]{2,64}$/.test(promoCode) ? promoCode : null;
+}
+
+function sanitizePromoPriceEntry(raw: unknown): CountryPromoPriceEntry | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  const discountPrice = toExactAmount(row.discountPrice);
+  const studentDiscountPrice = toExactAmount(row.studentDiscountPrice);
+  if (discountPrice == null && studentDiscountPrice == null) return null;
+  return { discountPrice, studentDiscountPrice };
+}
+
+/** Merge legacy single-promo fields into promoPricesByCode. */
+export function getPromoPricesByCodeForRow(row?: CountryPricingEntry | null): Record<string, CountryPromoPriceEntry> {
+  const out: Record<string, CountryPromoPriceEntry> = {};
+  if (!row) return out;
+
+  const raw = row.promoPricesByCode;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [rawCode, rawEntry] of Object.entries(raw)) {
+      const code = normalizePromoCodeKey(rawCode);
+      const entry = sanitizePromoPriceEntry(rawEntry);
+      if (code && entry) out[code] = entry;
+    }
+  }
+
+  const legacyCode = normalizePromoCodeKey(row.promoCode);
+  if (legacyCode && !out[legacyCode]) {
+    const discountPrice = toExactAmount(row.discountPrice);
+    const studentDiscountPrice = toExactAmount(row.studentDiscountPrice);
+    if (discountPrice != null || studentDiscountPrice != null) {
+      out[legacyCode] = { discountPrice, studentDiscountPrice };
+    }
+  }
+
+  return out;
 }
 
 export function toPayableAmountCents(amount: number, currency: string): number {
@@ -145,14 +193,38 @@ export function sanitizeCountryPricing(input: unknown): CountryPricingMap {
       continue;
     }
     const row = rawRow as Record<string, unknown>;
-    const promoCode = String(row.promoCode || '').trim().toUpperCase();
+    const promoPricesByCode: Record<string, CountryPromoPriceEntry> = {};
+    const rawByCode = row.promoPricesByCode;
+    if (rawByCode && typeof rawByCode === 'object' && !Array.isArray(rawByCode)) {
+      for (const [rawPromoCode, rawEntry] of Object.entries(rawByCode as Record<string, unknown>)) {
+        const promoKey = normalizePromoCodeKey(rawPromoCode);
+        const entry = sanitizePromoPriceEntry(rawEntry);
+        if (promoKey && entry) promoPricesByCode[promoKey] = entry;
+      }
+    }
+
+    const legacyPromoCode = normalizePromoCodeKey(row.promoCode);
+    if (legacyPromoCode && !promoPricesByCode[legacyPromoCode]) {
+      const legacyEntry = sanitizePromoPriceEntry({
+        discountPrice: row.discountPrice,
+        studentDiscountPrice: row.studentDiscountPrice,
+      });
+      if (legacyEntry) promoPricesByCode[legacyPromoCode] = legacyEntry;
+    }
+
+    const promoCodes = Object.keys(promoPricesByCode);
+    const primaryPromoCode = promoCodes[0] || null;
+    const primaryEntry = primaryPromoCode ? promoPricesByCode[primaryPromoCode] : null;
+
     out[code] = {
       basePrice: toExactAmount(row.basePrice),
-      discountPrice: toExactAmount(row.discountPrice),
+      discountPrice: primaryEntry?.discountPrice ?? toExactAmount(row.discountPrice),
       studentBasePrice: toExactAmount(row.studentBasePrice),
-      studentDiscountPrice: toExactAmount(row.studentDiscountPrice),
+      studentDiscountPrice:
+        primaryEntry?.studentDiscountPrice ?? toExactAmount(row.studentDiscountPrice),
       active: row.active === false ? false : true,
-      promoCode: /^[A-Z0-9_-]{2,64}$/.test(promoCode) ? promoCode : null,
+      promoCode: primaryPromoCode ?? legacyPromoCode,
+      ...(promoCodes.length ? { promoPricesByCode } : {}),
     };
   }
   return out;
@@ -161,7 +233,9 @@ export function sanitizeCountryPricing(input: unknown): CountryPricingMap {
 export function promoAmountsFromCountryPricing(map: CountryPricingMap): PromoAmountsByCountry {
   const out: PromoAmountsByCountry = {};
   for (const [code, row] of Object.entries(map || {})) {
-    const amount = Number(row?.discountPrice);
+    const byPromo = getPromoPricesByCodeForRow(row);
+    const firstPromo = Object.values(byPromo)[0];
+    const amount = Number(firstPromo?.discountPrice ?? row?.discountPrice);
     if (Number.isFinite(amount) && amount > 0) out[code] = amount;
   }
   return out;
@@ -186,6 +260,7 @@ export function listCountryPricing(
       studentDiscountPrice: toExactAmount(item?.studentDiscountPrice),
       active: item ? item.active !== false : true,
       promoCode: item?.promoCode || null,
+      promoPricesByCode: item ? getPromoPricesByCodeForRow(item) : {},
     };
   });
 }
@@ -242,19 +317,48 @@ export function countriesAssignedToPromo(
   map: CountryPricingMap | null | undefined,
   promoCode?: string | null,
 ): string[] {
-  const code = String(promoCode || '').trim().toUpperCase();
+  const code = normalizePromoCodeKey(promoCode);
   if (!code || !map || typeof map !== 'object') return [];
   return Object.entries(map)
-    .filter(([, row]) => {
-      if (!row || row.active === false) return false;
-      if (String(row.promoCode || '').trim().toUpperCase() !== code) return false;
+    .filter(([countryCode, row]) => {
+      if (!countryCode || !row || row.active === false) return false;
+      const entry = getPromoPricesByCodeForRow(row)[code];
+      if (!entry) return false;
       return (
-        toExactAmount(row.discountPrice) != null
-        || toExactAmount(row.studentDiscountPrice) != null
+        toExactAmount(entry.discountPrice) != null
+        || toExactAmount(entry.studentDiscountPrice) != null
       );
     })
     .map(([countryCode]) => String(countryCode || '').trim().toUpperCase())
     .filter(Boolean);
+}
+
+export function resolveCountryPromoPriceForCode(
+  map: CountryPricingMap | null | undefined,
+  countryOfResidenceOrCode?: string | null,
+  promoCode?: string | null,
+) {
+  const countryCode = resolveCountryCode(String(countryOfResidenceOrCode || ''));
+  const code = normalizePromoCodeKey(promoCode);
+  if (!countryCode || !code) return null;
+  const row = map?.[countryCode];
+  if (!row || row.active === false) return null;
+  const entry = getPromoPricesByCodeForRow(row)[code];
+  if (!entry) return null;
+  const discountPrice = toExactAmount(entry.discountPrice);
+  const studentDiscountPrice = toExactAmount(entry.studentDiscountPrice);
+  if (discountPrice == null && studentDiscountPrice == null) return null;
+  const currency = resolveCurrencyForCountry(countryCode);
+  return {
+    countryCode,
+    currency,
+    discountPrice,
+    studentDiscountPrice,
+    discountAmountCents:
+      discountPrice != null ? toPayableAmountCents(discountPrice, currency) : 0,
+    studentDiscountAmountCents:
+      studentDiscountPrice != null ? toPayableAmountCents(studentDiscountPrice, currency) : 0,
+  };
 }
 
 export function resolveCountryPromoAmount(
